@@ -129,3 +129,69 @@ export const ClaudeUrlSchema = z
 export const SettingsSchema = z.object({ claudeUrl: z.string() });
 export type Settings = z.infer<typeof SettingsSchema>;
 export const SettingsInputSchema = z.object({ claudeUrl: ClaudeUrlSchema });
+
+// ---------- Заказы монтажа ----------
+export const OrderStatusSchema = z.enum(["new", "in_work", "draft", "revise", "accepted", "cancelled"]);
+export type OrderStatus = z.infer<typeof OrderStatusSchema>;
+export const OrderEventKindSchema = z.enum(["created", "in_work", "comment", "draft", "revise", "accepted", "cancelled"]);
+export type OrderEventKind = z.infer<typeof OrderEventKindSchema>;
+
+export const OrderEventSchema = z.object({
+  id: z.number().int(),
+  kind: OrderEventKindSchema,
+  author: z.enum(["owner", "claude"]),
+  text: z.string().nullable(),
+  media: MediaItemSchema.nullable(),
+  createdAt: z.number().int(),
+});
+export type OrderEvent = z.infer<typeof OrderEventSchema>;
+
+export const OrderSchema = z.object({
+  id: z.number().int(),
+  status: OrderStatusSchema,
+  shootDate: z.string().nullable(),
+  folder: z.string().nullable(),
+  brief: z.string(),
+  durationSec: z.number().int().nullable(),
+  style: z.string().nullable(),
+  createdAt: z.number().int(),
+  updatedAt: z.number().int(),
+  events: z.array(OrderEventSchema),
+});
+export type Order = z.infer<typeof OrderSchema>;
+export const OrderListSchema = z.object({ items: z.array(OrderSchema) });
+export type OrderList = z.infer<typeof OrderListSchema>;
+export const OrderResultSchema = z.object({ order: OrderSchema });
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата в формате ГГГГ-ММ-ДД");
+export const OrderInputSchema = z.object({
+  shootDate: isoDate.nullable(),
+  folder: z.string().trim().max(200).nullable(),
+  brief: z.string().trim().min(1, "Опишите, что снято и что нужно").max(NOTE_MAX),
+  durationSec: z.number().int().min(5).max(600).nullable(),
+  style: z.string().trim().max(300).nullable(),
+});
+export type OrderInput = z.infer<typeof OrderInputSchema>;
+export const OrderTextInputSchema = z.object({ text: z.string().trim().min(1, "Напишите текст").max(NOTE_MAX) });
+
+/** Ответы Claude по заказу (по токену). */
+export const OrderAgentInputSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("in_work"), text: z.string().trim().max(NOTE_MAX).optional() }),
+  z.object({ kind: z.literal("comment"), text: z.string().trim().min(1).max(NOTE_MAX) }),
+  z.object({ kind: z.literal("draft"), mediaId: z.string().min(1), text: z.string().trim().max(NOTE_MAX).optional() }),
+]);
+export type OrderAgentInput = z.infer<typeof OrderAgentInputSchema>;
+
+/** Оглавление «Исходников» (Claude обновляет с Mac): папки и даты съёмки. */
+export const SourceFolderSchema = z.object({
+  name: z.string().min(1).max(200),
+  count: z.number().int().nonnegative(),
+  dates: z.array(z.object({ date: isoDate, count: z.number().int().positive() })).max(2000),
+});
+export type SourceFolder = z.infer<typeof SourceFolderSchema>;
+export const SourcesIndexSchema = z.object({
+  updatedAt: z.number().int().nullable(),
+  folders: z.array(SourceFolderSchema).max(500),
+});
+export type SourcesIndex = z.infer<typeof SourcesIndexSchema>;
+export const SourcesIndexInputSchema = SourcesIndexSchema.pick({ folders: true });

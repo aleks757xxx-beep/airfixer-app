@@ -23,7 +23,7 @@ import { ensureMigrated } from "../lib/migrate";
 const FREE_R2_BYTES = 10 * 1024 ** 3; // 10 ГБ бесплатно
 const UPLOAD_TTL_MS = 24 * 3600 * 1000; // незавершённая загрузка живёт сутки
 
-interface MediaRow {
+export interface MediaRow {
   id: string;
   r2_key: string;
   name: string;
@@ -48,7 +48,7 @@ interface UploadRow {
 }
 
 /** url — путь на этом же сайте; полный адрес для Buffer собирается при публикации. */
-const toItem = (r: MediaRow): MediaItem => ({
+export const toItem = (r: MediaRow): MediaItem => ({
   id: r.id,
   name: r.name,
   size: r.size,
@@ -61,7 +61,7 @@ const toItem = (r: MediaRow): MediaItem => ({
   noteReply: r.note_reply,
   noteAt: r.note_at,
 });
-const MEDIA_COLS = "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at";
+export const MEDIA_COLS = "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at";
 
 function extOf(name: string): string | null {
   const m = /\.([a-z0-9]+)$/i.exec(name);
@@ -171,7 +171,7 @@ async function mediaById(db: D1Database, id: string): Promise<MediaRow | null> {
   return db.prepare(`SELECT ${MEDIA_COLS} FROM media WHERE id = ? AND deleted_at IS NULL`).bind(id).first<MediaRow>();
 }
 
-const migrated: MiddlewareHandler<AppBindings> = async (c, next) => {
+export const migrated: MiddlewareHandler<AppBindings> = async (c, next) => {
   await ensureMigrated(c.env.DB);
   await next();
 };
@@ -217,7 +217,7 @@ export const media = new Hono<AppBindings>()
   });
 
 /** Проверка токена автозагрузки (UPLOAD_TOKEN). */
-const uploadToken: MiddlewareHandler<AppBindings> = async (c, next) => {
+export const uploadToken: MiddlewareHandler<AppBindings> = async (c, next) => {
   const token = (c.req.header("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   const expected = c.env.UPLOAD_TOKEN?.trim();
   if (!expected || !token || !(await safeEqual(token, expected))) return c.json({ error: "bad token" }, 401);

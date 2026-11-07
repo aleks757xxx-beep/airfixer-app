@@ -5,6 +5,8 @@ import { mediaKey, uploadVideo, useDeleteMedia, useMediaList, useSaveNote } from
 import { Card, Skeleton } from "../../components/ui/Card";
 import { formatBytes, formatDate, plural } from "../../lib/format";
 import { AskClaudeButton } from "../claude/askClaude";
+import { OrderForm } from "../orders/OrderForm";
+import { OrdersList } from "../orders/OrdersList";
 
 interface UploadJob {
   id: string;
@@ -123,6 +125,7 @@ export function LibraryPage() {
   const qc = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [jobs, setJobs] = useState<UploadJob[]>([]);
+  const [ordering, setOrdering] = useState(false);
 
   const patch = (id: string, p: Partial<UploadJob>) => setJobs((js) => js.map((j) => (j.id === id ? { ...j, ...p } : j)));
 
@@ -165,13 +168,14 @@ export function LibraryPage() {
               </p>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => fileInput.current?.click()}
-            className="ml-auto rounded-full bg-tg px-5 py-2.5 font-bold text-white"
-          >
-            + Загрузить
-          </button>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button type="button" onClick={() => setOrdering(true)} className="rounded-full bg-brand px-4 py-2.5 font-bold text-white">
+              + Заказать монтаж
+            </button>
+            <button type="button" onClick={() => fileInput.current?.click()} className="rounded-full bg-tg px-4 py-2.5 font-bold text-white">
+              + Загрузить
+            </button>
+          </div>
           <input
             ref={fileInput}
             type="file"
@@ -184,6 +188,8 @@ export function LibraryPage() {
             }}
           />
         </div>
+
+        {ordering ? <OrderForm onDone={() => setOrdering(false)} /> : null}
 
         {jobs.length > 0 ? (
           <ul className="mt-4 space-y-2">
@@ -205,6 +211,8 @@ export function LibraryPage() {
           </ul>
         ) : null}
       </Card>
+
+      <OrdersList />
 
       {del.isError ? <p className="font-semibold text-red-400">{del.error.message}</p> : null}
 

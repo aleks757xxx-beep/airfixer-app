@@ -60,11 +60,12 @@ export function useAskClaude() {
   };
 }
 
-export function AskClaudeButton({ item, className = "" }: { item?: MediaItem; className?: string }) {
+export function AskClaudeButton({ item, text, label, className = "" }: { item?: MediaItem; text?: string; label?: string; className?: string }) {
   const ask = useAskClaude();
+  const brief = text ?? (item ? mediaBrief(item) : undefined);
   return (
-    <button type="button" onClick={() => ask(item ? mediaBrief(item) : undefined)} className={className}>
-      💬 {item ? "Обсудить с Claude" : "Claude"}
+    <button type="button" onClick={() => ask(brief)} className={className}>
+      💬 {label ?? (brief ? "Обсудить с Claude" : "Claude")}
     </button>
   );
 }

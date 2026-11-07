@@ -8,6 +8,7 @@ import { ensureMigrated } from "./lib/migrate";
 import { cleanupOrphans, serveMedia } from "./services/storage";
 import { cleanupStaleUploads, ingest, media } from "./routes/media";
 import { settings } from "./routes/settings";
+import { orders, ordersAgent } from "./routes/orders";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -20,6 +21,7 @@ const app = new Hono<AppBindings>();
 // API
 const api = new Hono<AppBindings>();
 // Автозагрузка с Mac — по токену, не из браузера (поэтому до проверки Origin)
+api.route("/ingest/agent", ordersAgent);
 api.route("/ingest", ingest);
 api.use("*", sameOrigin);
 api.route("/auth", auth);
@@ -28,6 +30,7 @@ api.use("*", requireAuth);
 api.route("/health", health);
 api.route("/media", media);
 api.route("/settings", settings);
+api.route("/orders", orders);
 api.all("*", (c) => c.json({ error: "Не найдено" }, 404));
 api.onError((err, c) => {
   console.error("api error", err);
