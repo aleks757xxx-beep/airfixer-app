@@ -66,3 +66,15 @@ export async function bufferCapabilities(apiKey: string | undefined): Promise<Bu
   cached = { at: Date.now(), value };
   return value;
 }
+
+/** Описание типа из схемы Buffer (только чтение) — для разработки и для Claude. */
+export async function bufferIntrospectType(apiKey: string, name: string): Promise<unknown> {
+  if (!/^[A-Za-z_][A-Za-z0-9_]{0,80}$/.test(name)) throw new BufferError("Неверное имя типа");
+  const ref = "kind name ofType { kind name ofType { kind name ofType { kind name } } }";
+  const q = `query { __type(name: "${name}") { kind name description
+    fields { name description args { name type { ${ref} } } type { ${ref} } }
+    inputFields { name description type { ${ref} } }
+    enumValues { name description }
+    possibleTypes { name } } }`;
+  return bufferQuery(apiKey, q, z.unknown());
+}

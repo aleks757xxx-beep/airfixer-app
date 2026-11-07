@@ -14,6 +14,7 @@ import {
   type SourcesIndex,
 } from "../../shared/schemas";
 import { audit } from "../middleware/auth";
+import { BufferError, bufferIntrospectType } from "../services/buffer";
 import { MEDIA_COLS, migrated, toItem, uploadToken, type MediaRow } from "./media";
 
 interface OrderRow {
@@ -180,6 +181,16 @@ export const ordersAgent = new Hono<AppBindings>()
     const m = await c.env.DB.prepare("SELECT id FROM media WHERE id = ? AND deleted_at IS NULL").bind(d.mediaId).first<{ id: string }>();
     if (!m) return c.json({ error: "Ролик-черновик не найден в библиотеке" }, 404);
     return transition(c, { from: ["new", "in_work", "revise", "draft"], to: "draft", kind: "draft", author: "claude", text: d.text, mediaId: d.mediaId });
+  })
+  // Схема Buffer (только чтение): какие поля есть у постов, каналов и т.п.
+  .get("/buffer/type/:name", async (c) => {
+    const key = c.env.BUFFER_API_KEY?.trim();
+    if (!key) return c.json({ error: "Нет ключа Buffer" }, 503);
+    try {
+      return c.json(await bufferIntrospectType(key, c.req.param("name")));
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof BufferError ? e.message : "Ошибка Buffer" }, 502);
+    }
   })
   .put("/sources", async (c) => {
     const p = SourcesIndexInputSchema.safeParse(await c.req.json().catch(() => null));
