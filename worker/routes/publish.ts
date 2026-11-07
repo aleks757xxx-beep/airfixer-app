@@ -78,7 +78,7 @@ function build(author: "owner" | "claude") {
       const parsed = PostTextInputSchema.safeParse(await c.req.json().catch(() => null));
       if (!parsed.success) return c.json({ error: "Слишком длинная подпись" }, 400);
       try {
-        const post = await editPostText(apiKey(c) ?? "", c.env.DB, c.req.param("id"), parsed.data.text);
+        const post = await editPostText(apiKey(c) ?? "", c.env.DB, c.req.param("id"), parsed.data.text, parsed.data.title);
         await audit(c.env.DB, `post text (${author})`, c.req.param("id"));
         return c.json({ post });
       } catch (e: unknown) {

@@ -257,9 +257,10 @@ export function movePost(apiKey: string, db: D1Database, id: string, dueAt: numb
 }
 
 /** Изменить подпись поста. */
-export function editPostText(apiKey: string, db: D1Database, id: string, text: string): Promise<BufferPost> {
+export function editPostText(apiKey: string, db: D1Database, id: string, text: string, title?: { service: string; title: string }): Promise<BufferPost> {
+  const metadata = title && (title.service === "youtube" || title.service === "tiktok") ? metadataFor(title.service, title.title) : undefined;
   return oneResult(apiKey, db, `mutation($input: EditPostInput!) { editPost(input: $input) { ${RESULT_FRAGMENT} } }`, "editPost", {
-    input: { id, text },
+    input: { id, text, ...(metadata ? { metadata } : {}) },
   });
 }
 
