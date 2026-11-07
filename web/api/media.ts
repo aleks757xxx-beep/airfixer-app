@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiErrorSchema,
+  MediaItemResultSchema,
   MediaListSchema,
   OkSchema,
   UploadPartSchema,
@@ -101,6 +102,28 @@ export function useDeleteMedia() {
       if (res.ok && OkSchema.safeParse(data).success) return;
       const err = ApiErrorSchema.safeParse(data);
       throw new ApiRequestError(err.success ? err.data.error : `Ошибка (${res.status})`, res.status);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: mediaKey }),
+  });
+}
+
+/** Сохранить задание для Claude у ролика (пустой текст — убрать задание). */
+export function useSaveNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, note }: { id: string; note: string }) => {
+      const res = await fetch(`/api/v2/media/${encodeURIComponent(id)}/note`, {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note }),
+      });
+      const data: unknown = await res.json().catch(() => null);
+      if (res.ok) {
+        const ok = MediaItemResultSchema.safeParse(data);
+        if (ok.success) return ok.data.item;
+      }
+      throw errorFrom(res.status, data, "Не сохранилось");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: mediaKey }),
   });

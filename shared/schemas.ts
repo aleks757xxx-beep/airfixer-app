@@ -56,6 +56,12 @@ export const OkSchema = z.object({ ok: z.literal(true) });
 export const MediaSourceSchema = z.enum(["upload", "gotovoe"]);
 export type MediaSource = z.infer<typeof MediaSourceSchema>;
 
+export const NoteStatusSchema = z.enum(["new", "done"]);
+export type NoteStatus = z.infer<typeof NoteStatusSchema>;
+export const NOTE_MAX = 2000;
+export const NoteInputSchema = z.object({ note: z.string().max(NOTE_MAX) });
+export const TaskReplySchema = z.object({ reply: z.string().min(1).max(NOTE_MAX) });
+
 export const MediaItemSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -64,6 +70,12 @@ export const MediaItemSchema = z.object({
   source: MediaSourceSchema,
   createdAt: z.number().int(),
   url: z.string(),
+  /** Задание для Claude (пишет владелец) */
+  note: z.string().nullable(),
+  noteStatus: NoteStatusSchema.nullable(),
+  /** Ответ Claude на задание */
+  noteReply: z.string().nullable(),
+  noteAt: z.number().int().nullable(),
 });
 export type MediaItem = z.infer<typeof MediaItemSchema>;
 
@@ -73,6 +85,10 @@ export const MediaListSchema = z.object({
   limitBytes: z.number().int(),
 });
 export type MediaList = z.infer<typeof MediaListSchema>;
+
+export const MediaItemResultSchema = z.object({ item: MediaItemSchema });
+export const TaskListSchema = z.object({ items: z.array(MediaItemSchema) });
+export type TaskList = z.infer<typeof TaskListSchema>;
 
 export const UploadResultSchema = z.object({ item: MediaItemSchema, duplicate: z.boolean() });
 export type UploadResult = z.infer<typeof UploadResultSchema>;

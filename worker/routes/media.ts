@@ -3,11 +3,15 @@ import type { AppBindings } from "../env";
 import {
   ALLOWED_VIDEO_EXT,
   PART_SIZE,
+  NoteInputSchema,
+  TaskReplySchema,
   UploadCompleteInputSchema,
   UploadStartInputSchema,
   type MediaItem,
   type MediaList,
   type MediaSource,
+  type NoteStatus,
+  type TaskList,
   type UploadPart,
   type UploadResult,
   type UploadStart,
@@ -27,6 +31,10 @@ interface MediaRow {
   mime: string | null;
   source: MediaSource;
   created_at: number;
+  note: string | null;
+  note_status: NoteStatus | null;
+  note_reply: string | null;
+  note_at: number | null;
 }
 interface UploadRow {
   id: string;
@@ -48,7 +56,12 @@ const toItem = (r: MediaRow): MediaItem => ({
   source: r.source,
   createdAt: r.created_at,
   url: `/media/${r.r2_key}`,
+  note: r.note,
+  noteStatus: r.note_status,
+  noteReply: r.note_reply,
+  noteAt: r.note_at,
 });
+const MEDIA_COLS = "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at";
 
 function extOf(name: string): string | null {
   const m = /\.([a-z0-9]+)$/i.exec(name);
@@ -71,7 +84,7 @@ async function start(c: Ctx, source: MediaSource): Promise<Response> {
   const size = parsed.data.size;
 
   const dup = await c.env.DB.prepare(
-    "SELECT id, r2_key, name, size, mime, source, created_at FROM media WHERE name = ? AND size = ? AND deleted_at IS NULL",
+    `SELECT ${MEDIA_COLS} FROM media WHERE name = ? AND size = ? AND deleted_at IS NULL`,
   )
     .bind(name, size)
     .first<MediaRow>();
@@ -136,7 +149,7 @@ async function complete(c: Ctx, source: MediaSource): Promise<Response> {
     await c.env.BUCKET.delete(up.r2_key);
     return c.json({ error: "Размер файла не совпал — загрузите заново" }, 400);
   }
-  const row: MediaRow = { id: up.id, r2_key: up.r2_key, name: up.name, size: up.size, mime: up.mime, source: up.source, created_at: Date.now() };
+  const row: MediaRow = { id: up.id, r2_key: up.r2_key, name: up.name, size: up.size, mime: up.mime, source: up.source, created_at: Date.now(), note: null, note_status: null, note_reply: null, note_at: null };
   await c.env.DB.batch([
     c.env.DB.prepare("INSERT INTO media (id, r2_key, name, size, mime, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(
       row.id,
@@ -154,6 +167,10 @@ async function complete(c: Ctx, source: MediaSource): Promise<Response> {
   return c.json(r);
 }
 
+async function mediaById(db: D1Database, id: string): Promise<MediaRow | null> {
+  return db.prepare(`SELECT ${MEDIA_COLS} FROM media WHERE id = ? AND deleted_at IS NULL`).bind(id).first<MediaRow>();
+}
+
 const migrated: MiddlewareHandler<AppBindings> = async (c, next) => {
   await ensureMigrated(c.env.DB);
   await next();
@@ -164,7 +181,7 @@ export const media = new Hono<AppBindings>()
   .use("*", migrated)
   .get("/", async (c) => {
     const rows = await c.env.DB.prepare(
-      "SELECT id, r2_key, name, size, mime, source, created_at FROM media WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500",
+      `SELECT ${MEDIA_COLS} FROM media WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500`,
     ).all<MediaRow>();
     const items = rows.results.map((r) => toItem(r));
     const body: MediaList = { items, totalBytes: items.reduce((s, i) => s + i.size, 0), limitBytes: FREE_R2_BYTES };
@@ -173,6 +190,20 @@ export const media = new Hono<AppBindings>()
   .post("/uploads", (c) => start(c, "upload"))
   .put("/uploads/:uploadId/parts/:n", (c) => part(c, "upload"))
   .post("/uploads/:uploadId/complete", (c) => complete(c, "upload"))
+  .put("/:id/note", async (c) => {
+    const parsed = NoteInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Задание слишком длинное (до 2000 символов)" }, 400);
+    const id = c.req.param("id");
+    const note = parsed.data.note.trim();
+    const res = await c.env.DB.prepare(
+      "UPDATE media SET note = ?, note_status = ?, note_reply = NULL, note_at = ? WHERE id = ? AND deleted_at IS NULL",
+    )
+      .bind(note || null, note ? "new" : null, note ? Date.now() : null, id)
+      .run();
+    if (!res.meta.changes) return c.json({ error: "Ролик не найден" }, 404);
+    const row = await mediaById(c.env.DB, id);
+    return row ? c.json({ item: toItem(row) }) : c.json({ error: "Ролик не найден" }, 404);
+  })
   .delete("/:id", async (c) => {
     const id = c.req.param("id");
     const row = await c.env.DB.prepare("SELECT r2_key, name FROM media WHERE id = ? AND deleted_at IS NULL")
@@ -197,6 +228,27 @@ const uploadToken: MiddlewareHandler<AppBindings> = async (c, next) => {
 export const ingest = new Hono<AppBindings>()
   .use("*", uploadToken)
   .use("*", migrated)
+  // Задания для Claude: список новых и ответ на задание
+  .get("/tasks", async (c) => {
+    const rows = await c.env.DB.prepare(
+      `SELECT ${MEDIA_COLS} FROM media WHERE deleted_at IS NULL AND note_status = 'new' ORDER BY note_at`,
+    ).all<MediaRow>();
+    const body: TaskList = { items: rows.results.map((r) => toItem(r)) };
+    return c.json(body);
+  })
+  .post("/tasks/:id", async (c) => {
+    const parsed = TaskReplySchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Нужен ответ (до 2000 символов)" }, 400);
+    const id = c.req.param("id");
+    const res = await c.env.DB.prepare(
+      "UPDATE media SET note_status = 'done', note_reply = ?, note_at = ? WHERE id = ? AND deleted_at IS NULL AND note IS NOT NULL",
+    )
+      .bind(parsed.data.reply.trim(), Date.now(), id)
+      .run();
+    if (!res.meta.changes) return c.json({ error: "Задание не найдено" }, 404);
+    const row = await mediaById(c.env.DB, id);
+    return row ? c.json({ item: toItem(row) }) : c.json({ error: "Задание не найдено" }, 404);
+  })
   .post("/", (c) => start(c, "gotovoe"))
   .put("/:uploadId/parts/:n", (c) => part(c, "gotovoe"))
   .post("/:uploadId/complete", (c) => complete(c, "gotovoe"));

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { MAX_UPLOAD_BYTES, type MediaItem } from "../../../shared/schemas";
-import { mediaKey, uploadVideo, useDeleteMedia, useMediaList } from "../../api/media";
+import { MAX_UPLOAD_BYTES, NOTE_MAX, type MediaItem } from "../../../shared/schemas";
+import { mediaKey, uploadVideo, useDeleteMedia, useMediaList, useSaveNote } from "../../api/media";
 import { Card, Skeleton } from "../../components/ui/Card";
 import { formatBytes, formatDate, plural } from "../../lib/format";
 
@@ -12,6 +12,80 @@ interface UploadJob {
   error: string | null;
   done: boolean;
   duplicate: boolean;
+}
+
+/** Задание для Claude у ролика: текст, статус и ответ. */
+function NoteBlock({ item }: { item: MediaItem }) {
+  const save = useSaveNote();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(item.note ?? "");
+
+  if (editing) {
+    return (
+      <form
+        className="mt-2 space-y-1.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate({ id: item.id, note: text }, { onSuccess: () => setEditing(false) });
+        }}
+      >
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          maxLength={NOTE_MAX}
+          rows={4}
+          autoFocus
+          placeholder="Например: подпись для Инсты и ТикТока, выложить в пятницу вечером"
+          className="w-full rounded-lg border border-white/15 bg-ink-deep p-2 text-sm text-white placeholder:text-white/35 focus:border-brand focus:outline-none"
+        />
+        {save.isError ? <p className="text-xs text-red-400">{save.error.message}</p> : null}
+        <div className="flex gap-2">
+          <button type="submit" disabled={save.isPending} className="rounded-full bg-brand px-3 py-1 text-xs font-bold text-white disabled:opacity-50">
+            {save.isPending ? "Сохраняю…" : "Сохранить"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setText(item.note ?? "");
+              setEditing(false);
+            }}
+            className="text-xs text-white/55"
+          >
+            Отмена
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  if (!item.note) {
+    return (
+      <button type="button" onClick={() => setEditing(true)} className="mt-2 text-xs font-semibold text-brand-light">
+        ✎ Задание для Claude
+      </button>
+    );
+  }
+
+  const done = item.noteStatus === "done";
+  return (
+    <div className="mt-2 space-y-1.5 rounded-lg bg-white/5 p-2 text-xs">
+      <p className={done ? "font-semibold text-wa" : "font-semibold text-amber-300"}>
+        {done ? "✓ Claude выполнил" : "⏳ Ждёт Claude"}
+      </p>
+      <p className="whitespace-pre-wrap text-white/80">{item.note}</p>
+      {item.noteReply ? <p className="whitespace-pre-wrap border-t border-white/10 pt-1.5 text-white/65">Claude: {item.noteReply}</p> : null}
+      <button
+        type="button"
+        onClick={() => {
+          setText(done ? "" : item.note ?? "");
+          setEditing(true);
+        }}
+        className="font-semibold text-brand-light"
+      >
+        {done ? "✎ Новое задание" : "✎ Изменить"}
+      </button>
+    </div>
+  );
 }
 
 function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: () => void; deleting: boolean }) {
@@ -27,11 +101,12 @@ function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: ()
         <p className="mt-1 text-xs text-white/55">
           {formatBytes(item.size)} · {formatDate(item.createdAt)} · {item.source === "gotovoe" ? "«Готовое»" : "загружено"}
         </p>
+        <NoteBlock item={item} />
         <button
           type="button"
           disabled={deleting}
           onClick={onDelete}
-          className="mt-2 text-xs font-semibold text-red-400 disabled:opacity-50"
+          className="mt-2 block text-xs font-semibold text-red-400 disabled:opacity-50"
         >
           Удалить
         </button>
@@ -69,6 +144,7 @@ export function LibraryPage() {
   }
 
   const items = list.data?.items ?? [];
+  const pending = items.filter((i) => i.noteStatus === "new").length;
 
   return (
     <div className="space-y-4">
@@ -81,6 +157,11 @@ export function LibraryPage() {
                 ? `${items.length} ${plural(items.length, "ролик", "ролика", "роликов")} · ${formatBytes(list.data.totalBytes)} из ${formatBytes(list.data.limitBytes)}`
                 : "Ролики из папки «Готовое» и загруженные вручную"}
             </p>
+            {pending > 0 ? (
+              <p className="mt-1 text-sm font-semibold text-amber-300">
+                ⏳ {pending} {plural(pending, "задание ждёт", "задания ждут", "заданий ждут")} Claude — напишите в чат «посмотри задания»
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
