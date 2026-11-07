@@ -1,9 +1,13 @@
 import { useHealth } from "../../api/hooks";
 import { Card, Skeleton, StatusDot } from "../../components/ui/Card";
 import { useLogout } from "../../api/auth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import QRCode from "qrcode";
+import { useMutation } from "@tanstack/react-query";
+import { TotpSetupSchema } from "../../../shared/schemas";
+import { apiPost } from "../../api/client";
 import { useSaveSettings, useSettings } from "../../api/settings";
-import { useBufferLimits, useChannels, useConnectTelegram, useDirectAccounts, useDisconnect } from "../../api/publish";
+import { useBufferLimits, useConnectTelegram, useDirectAccounts, useDisconnect } from "../../api/publish";
 import { ServiceSquare } from "../publish/PostCard";
 
 /** Соцсети напрямую (без Buffer): подключить Instagram и Facebook, список, отключить. */
@@ -191,6 +195,67 @@ function BufferPlan() {
   );
 }
 
+/** Код проверки на втором устройстве (телефоне): ввести текущий код → QR и ключ. */
+function SecondDeviceCode() {
+  const [code, setCode] = useState("");
+  const [qr, setQr] = useState<string | null>(null);
+  const reveal = useMutation({ mutationFn: (c: string) => apiPost("/auth/totp/reveal", TotpSetupSchema, { code: c }) });
+  const uri = reveal.data?.uri;
+  useEffect(() => {
+    if (!uri) return;
+    let alive = true;
+    QRCode.toDataURL(uri, { margin: 1, width: 240 })
+      .then((u) => alive && setQr(u))
+      .catch(() => alive && setQr(null));
+    return () => {
+      alive = false;
+    };
+  }, [uri]);
+  return (
+    <div className="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
+      <p className="font-semibold">Код входа на телефоне</p>
+      <p className="text-xs text-white/50">
+        Если коды проверки есть только на одном устройстве: введите текущий код из «Паролей» — PostFixer покажет QR. Отсканируйте его камерой iPhone →
+        «Добавить код в Пароли» → выберите запись PostFixer. Ключ никому не показывайте и закройте страницу после.
+      </p>
+      {reveal.data ? (
+        <>
+          <a href={reveal.data.uri} className="block rounded-full border border-brand px-4 py-2 text-center font-semibold text-brand md:hidden">
+            Добавить код в «Пароли» (на этом телефоне)
+          </a>
+          {qr ? <img src={qr} alt="QR-код для кода проверки" className="size-60 rounded-xl bg-white p-2" /> : null}
+          <p className="break-all font-mono text-xs text-white/60">Ключ вручную: {reveal.data.secret}</p>
+          <button type="button" onClick={() => (reveal.reset(), setQr(null), setCode(""))} className="text-xs font-semibold text-white/60 underline">
+            Скрыть
+          </button>
+        </>
+      ) : (
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            reveal.mutate(code.trim());
+          }}
+        >
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="6 цифр"
+            aria-label="Текущий код проверки"
+            className="w-32 rounded-lg border border-white/15 bg-ink-deep p-2 text-center font-mono text-white focus:border-brand focus:outline-none"
+          />
+          <button type="submit" disabled={code.length !== 6 || reveal.isPending} className="rounded-full bg-brand px-4 py-1.5 font-bold text-white disabled:opacity-40">
+            Показать QR
+          </button>
+        </form>
+      )}
+      {reveal.isError ? <p className="text-red-400">{reveal.error.message}</p> : null}
+    </div>
+  );
+}
+
 /** Ссылка на чат с Claude, который открывает кнопка «💬 Claude». */
 function ClaudeLinkSetting() {
   const q = useSettings();
@@ -288,6 +353,7 @@ export function StatusPage() {
       <DirectConnections />
       <TelegramConnect />
       <BufferPlan />
+      <SecondDeviceCode />
       <ClaudeLinkSetting />
       <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">
         <p className="mb-1 text-xs text-white/45">Если потеряли телефон или вошли с чужого устройства — выйдет со всех устройств, войти можно заново.</p>
