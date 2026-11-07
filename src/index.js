@@ -3,6 +3,7 @@
 //   R2 binding:  BUCKET  -> airfixer-video
 //   Secret:      BUFFER_API_KEY  (ключ из Buffer → Settings → API)
 //   Secret:      APP_PASSWORD    (пароль для входа в приложение)
+//   Secret:      UPLOAD_TOKEN    (токен для автозагрузки из папки «Готовое»)
 
 const BUFFER_API = "https://api.buffer.com";
 
@@ -12,6 +13,14 @@ export default {
 
     // Видео отдаются публично — их скачивает Buffer в момент публикации
     if (url.pathname.startsWith("/media/")) return serveMedia(request, env, url);
+
+    // Автозагрузка из папки «Готовое» на Mac (по токену UPLOAD_TOKEN)
+    if (url.pathname === "/api/ingest" && request.method === "POST") {
+      const t = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+      if (!env.UPLOAD_TOKEN || !safeEqual(t, String(env.UPLOAD_TOKEN).trim())) return json({ error: "bad token" }, 401);
+      try { return json(await ingest(request, env, url)); }
+      catch (e) { return json({ error: String(e && e.message ? e.message : e) }, 500); }
+    }
 
     // Вход / выход
     if (url.pathname === "/login" && request.method === "GET") return html(loginPage(""));
@@ -28,6 +37,7 @@ export default {
       if (url.pathname === "/" && request.method === "GET") return html(PAGE);
       if (url.pathname === "/api/channels" && request.method === "GET") return json(await getChannels(env));
       if (url.pathname === "/api/upload" && request.method === "POST") return json(await upload(request, env, url));
+      if (url.pathname === "/api/library" && request.method === "GET") return json(await library(env, url));
       if (url.pathname === "/api/schedule" && request.method === "POST") return json(await schedule(request, env, url));
       return new Response("Not found", { status: 404 });
     } catch (e) {
@@ -136,14 +146,77 @@ async function serveMedia(request, env, url) {
   return new Response(request.method === "HEAD" ? null : obj.body, { status, headers });
 }
 
+const mediaUrl = (origin, key) => `${origin}/media/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
+const asciiName = (n) => {
+  const dot = n.lastIndexOf(".");
+  const ext = dot > 0 ? n.slice(dot).toLowerCase().replace(/[^a-z0-9.]/g, "") : ".mp4";
+  return "video" + ext;
+};
+const contentTypeFor = (n, fallback) =>
+  /\.mov$/i.test(n) ? "video/quicktime" : /\.mp4$/i.test(n) ? "video/mp4" : fallback || "video/mp4";
+
 async function upload(request, env, url) {
-  const name = (url.searchParams.get("name") || "video.mp4")
-    .replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80);
-  const key = `videos/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${name}`;
+  const display = (url.searchParams.get("name") || "video.mp4").slice(0, 120);
+  const key = `videos/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${asciiName(display)}`;
   await env.BUCKET.put(key, request.body, {
-    httpMetadata: { contentType: request.headers.get("content-type") || "video/mp4" },
+    httpMetadata: { contentType: contentTypeFor(display, request.headers.get("content-type")) },
+    customMetadata: { name: encodeURIComponent(display), source: "upload" },
   });
-  return { key, url: `${url.origin}/media/${encodeURIComponent(key).replace(/%2F/g, "/")}` };
+  return { key, url: mediaUrl(url.origin, key), name: display };
+}
+
+// Загрузка из папки «Готовое»: имя файла приходит в заголовке X-File-Name (base64, UTF-8)
+async function ingest(request, env, url) {
+  let display = "video.mp4";
+  try {
+    const b = request.headers.get("X-File-Name") || "";
+    if (b) display = new TextDecoder().decode(Uint8Array.from(atob(b.trim()), (c) => c.charCodeAt(0))).trim();
+  } catch {}
+  display = display.normalize("NFC").slice(0, 120);
+  const size = Number(request.headers.get("content-length") || 0);
+  // Не загружать повторно тот же файл (то же имя и размер)
+  const existing = await findByName(env, display);
+  if (existing && size && existing.size === size) {
+    if (request.body) await request.body.cancel();
+    return { key: existing.key, url: mediaUrl(url.origin, existing.key), name: display, skipped: true };
+  }
+  const key = `videos/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${asciiName(display)}`;
+  await env.BUCKET.put(key, request.body, {
+    httpMetadata: { contentType: contentTypeFor(display) },
+    customMetadata: { name: encodeURIComponent(display), source: "gotovoe" },
+  });
+  return { key, url: mediaUrl(url.origin, key), name: display };
+}
+
+async function listVideos(env) {
+  const out = [];
+  let cursor;
+  do {
+    const l = await env.BUCKET.list({ prefix: "videos/", cursor, include: ["customMetadata"] });
+    out.push(...l.objects);
+    cursor = l.truncated ? l.cursor : undefined;
+  } while (cursor && out.length < 1000);
+  return out;
+}
+
+async function findByName(env, display) {
+  const enc = encodeURIComponent(display);
+  return (await listVideos(env)).find((o) => o.customMetadata && o.customMetadata.name === enc) || null;
+}
+
+async function library(env, url) {
+  const items = (await listVideos(env))
+    .sort((a, b) => b.uploaded - a.uploaded)
+    .slice(0, 60)
+    .map((o) => ({
+      key: o.key,
+      url: mediaUrl(url.origin, o.key),
+      name: o.customMetadata && o.customMetadata.name ? decodeURIComponent(o.customMetadata.name) : o.key.split("/").pop(),
+      size: o.size,
+      uploaded: o.uploaded,
+      source: (o.customMetadata && o.customMetadata.source) || "",
+    }));
+  return { items };
 }
 
 // ---------- Buffer ----------
@@ -242,7 +315,11 @@ textarea{min-height:130px;resize:vertical}
 .ch input{width:20px;height:20px}.tag{font-size:12px;color:var(--muted);margin-left:auto;text-transform:capitalize}
 .btn{width:100%;border:0;border-radius:999px;padding:16px;font:700 17px Inter,sans-serif;color:#fff;background:var(--tg);cursor:pointer}
 .btn:disabled{opacity:.5}.row{display:flex;gap:10px}.row>*{flex:1}
-.small{font-size:13px;color:var(--muted);margin-top:6px}.res div{padding:6px 0}.ok{color:var(--wa)}.err{color:#ff7b7b}
+.small{font-size:13px;color:var(--muted);margin-top:6px}
+.lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.it{background:var(--dark);border:2px solid transparent;border-radius:12px;overflow:hidden;cursor:pointer;color:#fff}
+.it.sel{border-color:var(--blue)}.it video{width:100%;aspect-ratio:9/16;object-fit:cover;margin:0;border-radius:0;max-height:none;pointer-events:none}
+.it div{font-size:12px;padding:6px 8px;line-height:1.3;word-break:break-word}.res div{padding:6px 0}.ok{color:var(--wa)}.err{color:#ff7b7b}
 </style></head><body>
 <header>🍁 AirFixer <span>Постинг · <a href="/logout" style="color:inherit">выйти</a></span></header>
 <main>
@@ -252,7 +329,9 @@ textarea{min-height:130px;resize:vertical}
 <div class="drop" id="drop">Нажмите или перетащите ролик сюда</div>
 <input type="file" id="file" accept="video/*" hidden>
 <video id="prev" controls hidden></video>
-<div class="bar" id="bar"><i></i></div><div class="small" id="upInfo"></div></div>
+<div class="bar" id="bar"><i></i></div><div class="small" id="upInfo"></div>
+<label style="margin-top:16px">или из библиотеки <span class="small" style="font-weight:400">(папка «Готовое»)</span></label>
+<div id="lib" class="lib small">Загружаю…</div></div>
 
 <div class="card"><label>2. Подпись</label>
 <textarea id="text" placeholder="Текст поста и хэштеги"></textarea>
@@ -274,6 +353,17 @@ fetch('/api/channels').then(r=>r.json()).then(d=>{
   if(d.error){$('chs').textContent='Ошибка: '+d.error;return}
   channels=d.channels;$('chs').className='';
   $('chs').innerHTML=channels.map((c,i)=>'<div class="ch"><input type="checkbox" id="c'+i+'" checked><label for="c'+i+'" style="margin:0;font-weight:600">'+c.name+'</label><span class="tag">'+c.service+'</span></div>').join('');
+});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+fetch('/api/library').then(r=>r.json()).then(d=>{
+  if(d.error){$('lib').textContent='Ошибка: '+d.error;return}
+  if(!d.items.length){$('lib').textContent='Пока пусто — ролики из папки «Готовое» появятся здесь';return}
+  $('lib').innerHTML=d.items.map((x,i)=>'<div class="it" data-i="'+i+'"><video src="'+x.url+'#t=1" preload="metadata" muted playsinline></video><div>'+esc(x.name)+'<br><span style="color:var(--muted)">'+(x.size/1048576).toFixed(0)+' МБ · '+new Date(x.uploaded).toLocaleDateString('ru-RU')+'</span></div></div>').join('');
+  [...document.querySelectorAll('.it')].forEach(el=>el.onclick=()=>{
+    const x=d.items[+el.dataset.i];document.querySelectorAll('.it').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');
+    media=x.url;$('prev').src=x.url;$('prev').hidden=false;$('drop').textContent=x.name;$('drop').classList.add('has');
+    $('bar').style.display='none';$('upInfo').textContent='Выбрано из библиотеки ✓';$('go').disabled=false;
+  });
 });
 $('drop').onclick=()=>$('file').click();
 $('drop').ondragover=e=>{e.preventDefault()};
