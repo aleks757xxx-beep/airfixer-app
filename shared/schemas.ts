@@ -117,3 +117,15 @@ export type UploadPart = z.infer<typeof UploadPartSchema>;
 
 export const UploadCompleteInputSchema = z.object({ parts: z.array(UploadPartSchema).min(1).max(10000) });
 export const ALLOWED_VIDEO_EXT = ["mp4", "mov", "m4v"] as const;
+
+// ---------- Настройки ----------
+/** Чат с Claude по умолчанию — текущий рабочий чат; меняется в «Состоянии». */
+export const DEFAULT_CLAUDE_URL = "https://claude.ai/code/session_01V1h3GHri8iWkFU8ZAPG15M";
+export const ClaudeUrlSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((u) => /^https:\/\/claude\.ai\/[A-Za-z0-9._~\/?#=&%-]*$/.test(u), "Ссылка должна начинаться с https://claude.ai/");
+export const SettingsSchema = z.object({ claudeUrl: z.string() });
+export type Settings = z.infer<typeof SettingsSchema>;
+export const SettingsInputSchema = z.object({ claudeUrl: ClaudeUrlSchema });

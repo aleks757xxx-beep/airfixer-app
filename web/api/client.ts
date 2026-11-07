@@ -9,7 +9,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<S extends z.ZodType>(method: "GET" | "POST", path: string, schema: S, body?: unknown): Promise<z.infer<S>> {
+async function request<S extends z.ZodType>(method: "GET" | "POST" | "PUT", path: string, schema: S, body?: unknown): Promise<z.infer<S>> {
   let res: Response;
   try {
     res = await fetch(`/api/v2${path}`, {
@@ -34,3 +34,4 @@ async function request<S extends z.ZodType>(method: "GET" | "POST", path: string
 /** Запросы к /api/v2 с проверкой ответа по Zod-схеме. */
 export const apiGet = <S extends z.ZodType>(path: string, schema: S) => request("GET", path, schema);
 export const apiPost = <S extends z.ZodType>(path: string, schema: S, body: unknown = {}) => request("POST", path, schema, body);
+export const apiPut = <S extends z.ZodType>(path: string, schema: S, body: unknown) => request("PUT", path, schema, body);

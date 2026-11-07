@@ -4,6 +4,7 @@ import { MAX_UPLOAD_BYTES, NOTE_MAX, type MediaItem } from "../../../shared/sche
 import { mediaKey, uploadVideo, useDeleteMedia, useMediaList, useSaveNote } from "../../api/media";
 import { Card, Skeleton } from "../../components/ui/Card";
 import { formatBytes, formatDate, plural } from "../../lib/format";
+import { AskClaudeButton } from "../claude/askClaude";
 
 interface UploadJob {
   id: string;
@@ -102,6 +103,7 @@ function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: ()
           {formatBytes(item.size)} · {formatDate(item.createdAt)} · {item.source === "gotovoe" ? "«Готовое»" : "загружено"}
         </p>
         <NoteBlock item={item} />
+        <AskClaudeButton item={item} className="mt-2 block text-xs font-semibold text-brand-light" />
         <button
           type="button"
           disabled={deleting}
@@ -159,7 +161,7 @@ export function LibraryPage() {
             </p>
             {pending > 0 ? (
               <p className="mt-1 text-sm font-semibold text-amber-300">
-                ⏳ {pending} {plural(pending, "задание ждёт", "задания ждут", "заданий ждут")} Claude — напишите в чат «посмотри задания»
+                ⏳ {pending} {plural(pending, "задание ждёт", "задания ждут", "заданий ждут")} Claude — нажмите «💬 Claude» и напишите «посмотри задания»
               </p>
             ) : null}
           </div>

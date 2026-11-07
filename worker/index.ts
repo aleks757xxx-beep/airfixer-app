@@ -7,6 +7,7 @@ import { requireAuth } from "./middleware/auth";
 import { ensureMigrated } from "./lib/migrate";
 import { cleanupOrphans, serveMedia } from "./services/storage";
 import { cleanupStaleUploads, ingest, media } from "./routes/media";
+import { settings } from "./routes/settings";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -26,6 +27,7 @@ api.route("/auth", auth);
 api.use("*", requireAuth);
 api.route("/health", health);
 api.route("/media", media);
+api.route("/settings", settings);
 api.all("*", (c) => c.json({ error: "Не найдено" }, 404));
 api.onError((err, c) => {
   console.error("api error", err);

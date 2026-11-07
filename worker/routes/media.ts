@@ -228,6 +228,14 @@ const uploadToken: MiddlewareHandler<AppBindings> = async (c, next) => {
 export const ingest = new Hono<AppBindings>()
   .use("*", uploadToken)
   .use("*", migrated)
+  // Для Claude: вся библиотека (найти ролик по id/имени)
+  .get("/media", async (c) => {
+    const rows = await c.env.DB.prepare(
+      `SELECT ${MEDIA_COLS} FROM media WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500`,
+    ).all<MediaRow>();
+    const body: TaskList = { items: rows.results.map((r) => toItem(r)) };
+    return c.json(body);
+  })
   // Задания для Claude: список новых и ответ на задание
   .get("/tasks", async (c) => {
     const rows = await c.env.DB.prepare(

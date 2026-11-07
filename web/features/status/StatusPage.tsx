@@ -1,6 +1,51 @@
 import { useHealth } from "../../api/hooks";
 import { Card, Skeleton, StatusDot } from "../../components/ui/Card";
 import { useLogout } from "../../api/auth";
+import { useState } from "react";
+import { useSaveSettings, useSettings } from "../../api/settings";
+
+/** Ссылка на чат с Claude, который открывает кнопка «💬 Claude». */
+function ClaudeLinkSetting() {
+  const q = useSettings();
+  const save = useSaveSettings();
+  const [value, setValue] = useState<string | null>(null);
+  const current = value ?? q.data?.claudeUrl ?? "";
+  return (
+    <form
+      className="mt-5 space-y-2 border-t border-white/10 pt-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate({ claudeUrl: current.trim() }, { onSuccess: () => setValue(null) });
+      }}
+    >
+      <label htmlFor="claude-url" className="block font-semibold">
+        Чат с Claude (кнопка «💬 Claude»)
+      </label>
+      <p className="text-sm text-white/55">
+        Если начнёте новый чат с Claude: откройте его, скопируйте адрес из строки браузера (или «Поделиться» → «Скопировать ссылку»)
+        и вставьте сюда.
+      </p>
+      <input
+        id="claude-url"
+        type="url"
+        inputMode="url"
+        value={current}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={q.isPending}
+        className="w-full rounded-lg border border-white/15 bg-ink-deep p-2 text-sm text-white focus:border-brand focus:outline-none"
+      />
+      {save.isError ? <p className="text-sm text-red-400">{save.error.message}</p> : null}
+      {save.isSuccess && value === null ? <p className="text-sm text-wa">Сохранено ✓</p> : null}
+      <button
+        type="submit"
+        disabled={save.isPending || value === null}
+        className="rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40"
+      >
+        Сохранить
+      </button>
+    </form>
+  );
+}
 
 /** Состояние системы: база, хранилище, секреты. */
 export function StatusPage() {
@@ -48,6 +93,7 @@ export function StatusPage() {
           </li>
         ))}
       </ul>
+      <ClaudeLinkSetting />
       <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">
         <button
           type="button"
