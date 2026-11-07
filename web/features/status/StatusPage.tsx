@@ -55,11 +55,11 @@ function DirectConnections() {
         {(q.data?.items ?? []).some((a) => a.service === "instagram" || a.service === "facebook") ? "Переподключить Instagram и Facebook" : "Подключить Instagram и Facebook"}
       </a>
       <p className="pt-2 text-xs text-white/50">
-        Instagram, который не привязан к странице Facebook (например, airfixertbls), подключается отдельно — входом в сам Instagram. Войдите тем аккаунтом,
-        который нужно подключить.
+        Instagram, который не привязан к странице Facebook (например, airfixertbls), подключается отдельно — «единым входом»: в окне Meta войдите и отметьте
+        нужный Instagram. Рекламные аккаунты отмечать не нужно.
       </p>
       {q.data && !q.data.instagram?.configured ? (
-        <p className="text-xs text-amber-300">Для этого в Cloudflare нужны секреты INSTAGRAM_APP_ID и INSTAGRAM_APP_SECRET.</p>
+        <p className="text-xs text-amber-300">Кнопка заработает, когда в приложении Meta будет создана конфигурация «единого входа» — Claude включит её.</p>
       ) : null}
       <a
         href="/api/v2/connect/instagram/start"

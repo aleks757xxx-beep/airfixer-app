@@ -4,7 +4,16 @@ import type { AppBindings } from "../env";
 import { audit } from "../middleware/auth";
 import { randomToken } from "../lib/crypto";
 import { BufferError } from "../services/buffer";
-import { META_APP_ID_DEFAULT, MetaError, exchangeCode, igExchangeCode, igLoginUrl, igMe, listPages, metaLoginUrl } from "../services/meta";
+import {
+  META_APP_ID_DEFAULT,
+  META_IG_CONFIG_ID_DEFAULT,
+  MetaError,
+  assignedInstagramAccounts,
+  exchangeBusinessCode,
+  exchangeCode,
+  listPages,
+  metaLoginUrl,
+} from "../services/meta";
 import { accountToChannel, disconnectAccount, listAccounts, saveInstagramLogin, saveMetaAccounts, saveTelegramChannel, setSlots } from "../services/direct";
 import { TelegramError, chatByAddress, recentChannels } from "../services/telegram";
 import { listChannels } from "../services/publish";
@@ -13,8 +22,9 @@ import { migrated } from "./media";
 const STATE_TTL_MS = 10 * 60_000;
 const redirectUri = (url: string) => `https://${new URL(url).host}/api/v2/connect/meta/callback`;
 const igRedirectUri = (url: string) => `https://${new URL(url).host}/api/v2/connect/instagram/callback`;
-const igConfigured = (env: { INSTAGRAM_APP_ID?: string; INSTAGRAM_APP_SECRET?: string; TOKEN_KEY?: string }) =>
-  !!(env.INSTAGRAM_APP_ID?.trim() && env.INSTAGRAM_APP_SECRET?.trim() && env.TOKEN_KEY);
+const igConfigId = (env: { META_IG_CONFIG_ID?: string }) => env.META_IG_CONFIG_ID?.trim() || META_IG_CONFIG_ID_DEFAULT;
+const igConfigured = (env: { META_IG_CONFIG_ID?: string; META_APP_SECRET?: string; TOKEN_KEY?: string }) =>
+  !!(igConfigId(env) && env.META_APP_SECRET && env.TOKEN_KEY);
 const appId = (env: { META_APP_ID?: string }) => env.META_APP_ID?.trim() || META_APP_ID_DEFAULT;
 
 const SlotsSchema = z.array(
@@ -35,11 +45,11 @@ export const connect = new Hono<AppBindings>()
   })
   // Кнопка «Подключить Instagram без страницы» → вход в Instagram
   .get("/instagram/start", async (c) => {
-    if (!igConfigured(c.env)) return c.redirect("/#/status?connect_error=" + encodeURIComponent("Не заданы INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET"));
+    if (!igConfigured(c.env)) return c.redirect("/#/status?connect_error=" + encodeURIComponent("Единый вход Instagram ещё не настроен"));
     const state = randomToken(24);
     await c.env.DB.prepare("DELETE FROM oauth_states WHERE created_at < ?").bind(Date.now() - STATE_TTL_MS).run();
     await c.env.DB.prepare("INSERT INTO oauth_states (state, provider, created_at) VALUES (?, 'instagram', ?)").bind(state, Date.now()).run();
-    return c.redirect(igLoginUrl(c.env.INSTAGRAM_APP_ID?.trim() ?? "", igRedirectUri(c.req.url), state));
+    return c.redirect(metaLoginUrl(appId(c.env), igRedirectUri(c.req.url), state, igConfigId(c.env)));
   })
   // Telegram: по адресу канала (@name) или найти каналы, куда бота недавно добавили админом
   .post("/telegram", async (c) => {
@@ -93,15 +103,17 @@ connectCallback.get("/instagram/callback", async (c) => {
   await c.env.DB.prepare("DELETE FROM oauth_states WHERE state = ?").bind(state).run();
   if (!row || Date.now() - row.created_at > STATE_TTL_MS) return back("connect_error=" + encodeURIComponent("Ссылка входа устарела — нажмите «Подключить» ещё раз"));
   if (!code) return back("connect_error=" + encodeURIComponent(c.req.query("error_description") ?? "Вход в Instagram отменён"));
-  if (!igConfigured(c.env)) return back("connect_error=" + encodeURIComponent("Не заданы INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET"));
+  if (!igConfigured(c.env)) return back("connect_error=" + encodeURIComponent("Единый вход Instagram ещё не настроен"));
   try {
-    const t = await igExchangeCode(c.env.INSTAGRAM_APP_ID?.trim() ?? "", c.env.INSTAGRAM_APP_SECRET?.trim() ?? "", igRedirectUri(c.req.url), code);
-    const me = await igMe(t.token);
+    const token = await exchangeBusinessCode(appId(c.env), c.env.META_APP_SECRET ?? "", igRedirectUri(c.req.url), code);
+    const accounts = await assignedInstagramAccounts(token);
+    if (accounts.length === 0) return back("connect_error=" + encodeURIComponent("Instagram не дал доступ ни к одному аккаунту — при входе отметьте нужный Instagram"));
     const key = c.env.BUFFER_API_KEY?.trim();
     const bufferChannels = key ? await listChannels(key, c.env.DB).catch(() => []) : [];
-    await saveInstagramLogin(c.env, { userId: me.userId, username: me.username, token: t.token, expiresAt: t.expiresAt }, bufferChannels);
-    await audit(c.env.DB, "direct connect instagram", me.username);
-    return back(`connected=instagram&name=${encodeURIComponent(me.username)}`);
+    for (const a of accounts) await saveInstagramLogin(c.env, { userId: a.id, username: a.username, token }, bufferChannels);
+    const names = accounts.map((a) => a.username).join(", ");
+    await audit(c.env.DB, "direct connect instagram", names);
+    return back(`connected=instagram&name=${encodeURIComponent(names)}`);
   } catch (e: unknown) {
     const msg = e instanceof MetaError || e instanceof BufferError ? e.message : "Ошибка подключения";
     return back("connect_error=" + encodeURIComponent(msg));

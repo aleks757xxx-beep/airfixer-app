@@ -10,8 +10,6 @@ import {
   igContainerStatus,
   igCreateContainer,
   igPublish,
-  igRefresh,
-  type IgApi,
   type MetaPage,
 } from "./meta";
 import { TelegramError, sendVideo, type TgChat } from "./telegram";
@@ -148,13 +146,10 @@ export async function saveTelegramChannel(db: D1Database, chat: TgChat): Promise
     .run();
 }
 
-/** Instagram, подключённый входом через Instagram (без страницы Facebook): page_id пустой. */
-const igApiOf = (a: AccountRow): IgApi => (a.service === "instagram" && !a.page_id ? "ig" : "fb");
-
-/** Сохранить Instagram после входа через Instagram. Канал Buffer с тем же именем скрывается («вместо Buffer»). */
+/** Сохранить Instagram после единого входа (без страницы Facebook, page_id пустой). Канал Buffer с тем же именем скрывается («вместо Buffer»). */
 export async function saveInstagramLogin(
   env: Env,
-  acc: { userId: string; username: string; token: string; expiresAt: number },
+  acc: { userId: string; username: string; token: string },
   bufferChannels: ReadonlyArray<Channel>,
 ): Promise<boolean> {
   const id = `ig:${acc.userId}`;
@@ -174,31 +169,9 @@ export async function saveInstagramLogin(
      ON CONFLICT(id) DO UPDATE SET name = excluded.name, token_enc = excluded.token_enc, page_id = NULL, token_expires_at = excluded.token_expires_at,
        replaces = COALESCE(direct_accounts.replaces, excluded.replaces), updated_at = excluded.updated_at`,
   )
-    .bind(id, acc.username, acc.userId, await seal(env.TOKEN_KEY, acc.token), acc.expiresAt, buf?.id ?? null, JSON.stringify(buf?.schedule ?? DEFAULT_SLOTS), now, now)
+    .bind(id, acc.username, acc.userId, await seal(env.TOKEN_KEY, acc.token), null, buf?.id ?? null, JSON.stringify(buf?.schedule ?? DEFAULT_SLOTS), now, now)
     .run();
   return true;
-}
-
-/** Раз в сутки: продлить токены Instagram (вход через Instagram), когда до конца меньше 50 дней (живут 60). */
-export async function refreshInstagramTokens(env: Env): Promise<number> {
-  const rows = await env.DB.prepare(
-    "SELECT * FROM direct_accounts WHERE service = 'instagram' AND page_id IS NULL AND token_expires_at IS NOT NULL AND token_expires_at < ?",
-  )
-    .bind(Date.now() + 50 * 86_400_000)
-    .all<AccountRow>();
-  let n = 0;
-  for (const a of rows.results) {
-    try {
-      const r = await igRefresh(await open(env.TOKEN_KEY, a.token_enc));
-      await env.DB.prepare("UPDATE direct_accounts SET token_enc = ?, token_expires_at = ?, updated_at = ? WHERE id = ?")
-        .bind(await seal(env.TOKEN_KEY, r.token), r.expiresAt, Date.now(), a.id)
-        .run();
-      n++;
-    } catch (e: unknown) {
-      console.error("ig refresh", a.name, e);
-    }
-  }
-  return n;
 }
 
 export async function disconnectAccount(db: D1Database, id: string): Promise<void> {
@@ -387,7 +360,7 @@ async function step(env: Env, p: PostRow): Promise<void> {
     const videoUrl = `${PUBLIC_ORIGIN}/media/${m.r2_key}`;
     const caption = p.text;
     let container: string;
-    if (a.service === "instagram") container = await igCreateContainer(a.external_id, token, { videoUrl, caption, thumbMs: p.thumb_ms ?? undefined }, igApiOf(a));
+    if (a.service === "instagram") container = await igCreateContainer(a.external_id, token, { videoUrl, caption, thumbMs: p.thumb_ms ?? undefined });
     else if (a.service === "facebook") container = await fbPublishReel(a.external_id, token, videoUrl, caption);
     else return fail(db, p, "YouTube напрямую ещё не подключён");
     await db
@@ -401,16 +374,16 @@ async function step(env: Env, p: PostRow): Promise<void> {
   if (!p.container_id) return fail(db, p, "Нет id загрузки");
   if (now - p.updated_at > PROCESS_TIMEOUT_MS) return fail(db, p, "Соцсеть слишком долго обрабатывает ролик — нажмите «Повторить»");
   if (a.service === "instagram") {
-    const st = await igContainerStatus(p.container_id, token, igApiOf(a));
+    const st = await igContainerStatus(p.container_id, token);
     if (st.status === "ERROR" || st.status === "EXPIRED") return fail(db, p, `Instagram не принял ролик${st.message ? `: ${st.message}` : ""}`);
     if (st.status !== "FINISHED") return;
-    const pub = await igPublish(a.external_id, token, p.container_id, igApiOf(a));
+    const pub = await igPublish(a.external_id, token, p.container_id);
     await db
       .prepare("UPDATE direct_posts SET status = 'sent', external_id = ?, external_link = ?, sent_at = ?, error = NULL, updated_at = ? WHERE id = ?")
       .bind(pub.id, pub.link, now, now, p.id)
       .run();
     if (p.first_comment) {
-      await igComment(pub.id, token, p.first_comment, igApiOf(a)).catch(async (e: unknown) => {
+      await igComment(pub.id, token, p.first_comment).catch(async (e: unknown) => {
         await db.prepare("UPDATE direct_posts SET error = ? WHERE id = ?").bind(`Вышел, но первый комментарий не добавился: ${e instanceof Error ? e.message : ""}`, p.id).run();
       });
     }

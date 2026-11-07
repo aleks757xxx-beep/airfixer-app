@@ -5,23 +5,13 @@ import { z } from "zod";
 const GRAPH_VERSION = "v23.0";
 let GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 let RUPLOAD = `https://rupload.facebook.com/video-upload/${GRAPH_VERSION}`;
-/** Instagram API со входом через Instagram (аккаунт без страницы Facebook). */
-let IG_GRAPH = `https://graph.instagram.com/${GRAPH_VERSION}`;
-let IG_GRAPH_ROOT = "https://graph.instagram.com";
-let IG_OAUTH = "https://api.instagram.com";
 /** Только для локальной проверки (заглушка Graph API). */
 export function setGraphUrl(url: string | undefined): void {
   if (url) {
     GRAPH = url.replace(/\/$/, "");
     RUPLOAD = `${GRAPH}/rupload`;
-    IG_GRAPH = `${GRAPH}/igapi`;
-    IG_GRAPH_ROOT = `${GRAPH}/igroot`;
-    IG_OAUTH = `${GRAPH}/igoauth`;
   }
 }
-/** Через что идёт Instagram: «fb» — привязан к странице Facebook; «ig» — вход через Instagram. */
-export type IgApi = "fb" | "ig";
-const igBase = (api: IgApi) => (api === "ig" ? IG_GRAPH : GRAPH);
 
 export class MetaError extends Error {
   constructor(message: string) {
@@ -37,11 +27,10 @@ async function graph<S extends z.ZodType>(
   path: string,
   params: Record<string, string | number | boolean | undefined>,
   schema: S,
-  base: string = GRAPH,
 ): Promise<z.infer<S>> {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined) qs.set(k, String(v));
-  const url = `${base}${path}`;
+  const url = `${GRAPH}${path}`;
   const res =
     method === "GET"
       ? await fetch(`${url}?${qs.toString()}`)
@@ -73,6 +62,12 @@ export const META_SCOPES = [
  *  «Sorry, something went wrong» — право pages_manage_engagement тянет недоступное pages_read_user_content.
  *  Поэтому права передаются напрямую списком META_SCOPES (без pages_manage_engagement). */
 export const META_APP_ID_DEFAULT = "2206384923628133";
+/**
+ * «Единый вход» Instagram (для новых приложений Meta вход через сам Instagram недоступен):
+ * вход через Facebook для компаний с конфигурацией, где выбирается аккаунт Instagram — страница Facebook не нужна.
+ * Ключ — бессрочный маркер системного пользователя компании. ID конфигурации не секрет; пусто — кнопка выключена.
+ */
+export const META_IG_CONFIG_ID_DEFAULT = "";
 
 /** Вход через Facebook для компаний: права задаются конфигурацией (config_id). */
 export function metaLoginUrl(appId: string, redirectUri: string, state: string, configId?: string): string {
@@ -120,87 +115,52 @@ export interface IgReel {
   thumbMs?: number;
 }
 /** Шаг 1: создать контейнер Reels (Instagram сам скачивает ролик по ссылке). */
-export async function igCreateContainer(igId: string, token: string, r: IgReel, api: IgApi = "fb"): Promise<string> {
+export async function igCreateContainer(igId: string, token: string, r: IgReel): Promise<string> {
   const d = await graph(
     "POST",
     `/${igId}/media`,
     { media_type: "REELS", video_url: r.videoUrl, caption: r.caption, share_to_feed: true, thumb_offset: r.thumbMs, access_token: token },
     z.object({ id: z.string() }),
-    igBase(api),
   );
   return d.id;
 }
 /** Шаг 2: готов ли контейнер (обработка ролика занимает от секунд до минут). */
-export async function igContainerStatus(containerId: string, token: string, api: IgApi = "fb"): Promise<{ status: string; message: string | null }> {
+export async function igContainerStatus(containerId: string, token: string): Promise<{ status: string; message: string | null }> {
   const d = await graph(
     "GET",
     `/${containerId}`,
     { fields: "status_code,status", access_token: token },
     z.object({ status_code: z.string().optional(), status: z.string().optional() }),
-    igBase(api),
   );
   return { status: d.status_code ?? "IN_PROGRESS", message: d.status ?? null };
 }
 /** Шаг 3: опубликовать. Возвращает id и ссылку. */
-export async function igPublish(igId: string, token: string, containerId: string, api: IgApi = "fb"): Promise<{ id: string; link: string | null }> {
-  const d = await graph("POST", `/${igId}/media_publish`, { creation_id: containerId, access_token: token }, z.object({ id: z.string() }), igBase(api));
-  const info = await graph("GET", `/${d.id}`, { fields: "permalink", access_token: token }, z.object({ permalink: z.string().optional() }), igBase(api)).catch(
-    () => ({ permalink: undefined }),
-  );
+export async function igPublish(igId: string, token: string, containerId: string): Promise<{ id: string; link: string | null }> {
+  const d = await graph("POST", `/${igId}/media_publish`, { creation_id: containerId, access_token: token }, z.object({ id: z.string() }));
+  const info = await graph("GET", `/${d.id}`, { fields: "permalink", access_token: token }, z.object({ permalink: z.string().optional() })).catch(() => ({
+    permalink: undefined,
+  }));
   return { id: d.id, link: info.permalink ?? null };
 }
-export async function igComment(mediaId: string, token: string, message: string, api: IgApi = "fb"): Promise<void> {
-  await graph("POST", `/${mediaId}/comments`, { message, access_token: token }, z.object({ id: z.string() }), igBase(api));
+export async function igComment(mediaId: string, token: string, message: string): Promise<void> {
+  await graph("POST", `/${mediaId}/comments`, { message, access_token: token }, z.object({ id: z.string() }));
 }
 
-// ---- Вход через Instagram (аккаунт без страницы Facebook) ----
-export const IG_LOGIN_SCOPES = ["instagram_business_basic", "instagram_business_content_publish", "instagram_business_manage_comments", "instagram_business_manage_insights"].join(",");
-
-/** force_reauth — чтобы можно было войти другим аккаунтом, даже если браузер уже вошёл в Instagram. */
-export function igLoginUrl(appId: string, redirectUri: string, state: string): string {
-  const qs = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, response_type: "code", scope: IG_LOGIN_SCOPES, state, force_reauth: "true", enable_fb_login: "false" });
-  return `https://www.instagram.com/oauth/authorize?${qs.toString()}`;
+/** Код единого входа → маркер системного пользователя (бессрочный, без обмена на долгоживущий). */
+export async function exchangeBusinessCode(appId: string, appSecret: string, redirectUri: string, code: string): Promise<string> {
+  const t = await graph("GET", "/oauth/access_token", { client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code }, Token);
+  return t.access_token;
 }
 
-const IgShort = z.union([
-  z.object({ access_token: z.string(), user_id: z.union([z.string(), z.number()]) }),
-  z.object({ data: z.array(z.object({ access_token: z.string(), user_id: z.union([z.string(), z.number()]) })).min(1) }),
-]);
-const IgLong = z.object({ access_token: z.string(), expires_in: z.number() });
-
-/** Код → долгоживущий токен Instagram (60 дней, продлевается). */
-export async function igExchangeCode(appId: string, appSecret: string, redirectUri: string, code: string): Promise<{ token: string; expiresAt: number }> {
-  const res = await fetch(`${IG_OAUTH}/oauth/access_token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: appId, client_secret: appSecret, grant_type: "authorization_code", redirect_uri: redirectUri, code: code.replace(/#_$/, "") }).toString(),
-  });
-  const raw: unknown = await res.json().catch(() => null);
-  const parsed = IgShort.safeParse(raw);
-  if (!res.ok || !parsed.success) {
-    const e = z.object({ error_message: z.string().optional(), error: z.object({ message: z.string() }).optional() }).safeParse(raw);
-    throw new MetaError(`Instagram: ${(e.success && (e.data.error_message || e.data.error?.message)) || `ошибка входа ${res.status}`}`);
-  }
-  const short = "data" in parsed.data ? parsed.data.data[0]?.access_token ?? "" : parsed.data.access_token;
-  const long = await graph("GET", "/access_token", { grant_type: "ig_exchange_token", client_secret: appSecret, access_token: short }, IgLong, IG_GRAPH_ROOT);
-  return { token: long.access_token, expiresAt: Date.now() + long.expires_in * 1000 };
-}
-
-/** Продлить токен ещё на 60 дней (токену должно быть больше суток). */
-export async function igRefresh(token: string): Promise<{ token: string; expiresAt: number }> {
-  const d = await graph("GET", "/refresh_access_token", { grant_type: "ig_refresh_token", access_token: token }, IgLong, IG_GRAPH_ROOT);
-  return { token: d.access_token, expiresAt: Date.now() + d.expires_in * 1000 };
-}
-
-export async function igMe(token: string): Promise<{ userId: string; username: string }> {
+/** Аккаунты Instagram, к которым владелец дал доступ при едином входе. */
+export async function assignedInstagramAccounts(token: string): Promise<Array<{ id: string; username: string }>> {
   const d = await graph(
     "GET",
-    "/me",
-    { fields: "user_id,username", access_token: token },
-    z.object({ user_id: z.union([z.string(), z.number()]), username: z.string() }),
-    IG_GRAPH,
+    "/me/assigned_instagram_accounts",
+    { fields: "id,username", limit: 50, access_token: token },
+    z.object({ data: z.array(z.object({ id: z.string(), username: z.string().optional() })) }),
   );
-  return { userId: String(d.user_id), username: d.username };
+  return d.data.map((a) => ({ id: a.id, username: a.username ?? `Instagram ${a.id}` }));
 }
 
 // ---- Facebook Reels (страница) ----
