@@ -262,6 +262,7 @@ export const ComposeResultSchema = z.object({
 });
 export type ComposeResult = z.infer<typeof ComposeResultSchema>;
 export const MovePostInputSchema = z.object({ dueAt: z.number().int() });
+export const PostTextInputSchema = z.object({ text: z.string().max(POST_TEXT_MAX) });
 export const PostResultSchema = z.object({ post: BufferPostSchema });
 
 /** Лимиты длины подписи по сетям (для счётчика в окне поста). */

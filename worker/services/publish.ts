@@ -256,6 +256,13 @@ export function movePost(apiKey: string, db: D1Database, id: string, dueAt: numb
   );
 }
 
+/** Изменить подпись поста. */
+export function editPostText(apiKey: string, db: D1Database, id: string, text: string): Promise<BufferPost> {
+  return oneResult(apiKey, db, `mutation($input: EditPostInput!) { editPost(input: $input) { ${RESULT_FRAGMENT} } }`, "editPost", {
+    input: { id, text },
+  });
+}
+
 /** Опубликовать сейчас. */
 export function sharePostNow(apiKey: string, db: D1Database, id: string): Promise<BufferPost> {
   return oneResult(apiKey, db, `mutation($input: EditPostInput!) { editPost(input: $input) { ${RESULT_FRAGMENT} } }`, "editPost", {

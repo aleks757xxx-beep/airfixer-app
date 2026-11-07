@@ -42,6 +42,18 @@ export function PostsPage() {
 
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 text-xl" aria-hidden>
+          📅
+        </span>
+        <h1 className="text-2xl font-bold">Публикации</h1>
+        <div className="ml-auto flex rounded-xl border border-white/10 p-1">
+          <span className="rounded-lg bg-wa/20 px-3 py-1.5 text-sm font-semibold text-wa">☰ Список</span>
+          <a href="#/calendar" className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white/70 hover:bg-white/5">
+            📅 Календарь
+          </a>
+        </div>
+      </div>
       <Card>
         <div className="flex flex-wrap gap-2">
           {TABS.map((t) => (

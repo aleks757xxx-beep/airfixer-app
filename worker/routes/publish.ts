@@ -1,9 +1,9 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import type { AppBindings } from "../env";
-import { ComposeInputSchema, MovePostInputSchema, type BufferPostList, type ChannelList } from "../../shared/schemas";
+import { ComposeInputSchema, MovePostInputSchema, PostTextInputSchema, type BufferPostList, type ChannelList } from "../../shared/schemas";
 import { audit } from "../middleware/auth";
 import { BufferError } from "../services/buffer";
-import { createPosts, deletePost, listChannels, listPosts, movePost, sharePostNow } from "../services/publish";
+import { createPosts, deletePost, editPostText, listChannels, listPosts, movePost, sharePostNow } from "../services/publish";
 import { migrated, uploadToken } from "./media";
 
 type Ctx = Context<AppBindings>;
@@ -69,6 +69,17 @@ function build(author: "owner" | "claude") {
       try {
         const post = await movePost(apiKey(c) ?? "", c.env.DB, c.req.param("id"), parsed.data.dueAt);
         await audit(c.env.DB, `post move (${author})`, c.req.param("id"));
+        return c.json({ post });
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    .post("/posts/:id/text", async (c) => {
+      const parsed = PostTextInputSchema.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) return c.json({ error: "Слишком длинная подпись" }, 400);
+      try {
+        const post = await editPostText(apiKey(c) ?? "", c.env.DB, c.req.param("id"), parsed.data.text);
+        await audit(c.env.DB, `post text (${author})`, c.req.param("id"));
         return c.json({ post });
       } catch (e: unknown) {
         return fail(c, e);

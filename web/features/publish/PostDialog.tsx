@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { BufferPost, Channel } from "../../../shared/schemas";
-import { useDeletePost, useMovePost, useShareNow } from "../../api/publish";
+import { useDeletePost, useEditPostText, useMovePost, useShareNow } from "../../api/publish";
+import { TEXT_LIMITS } from "../../../shared/schemas";
 import { dayKey, formatWhen, fromTb, timeKey } from "../../lib/time";
 import { ServiceBadge, channelLabel } from "./channels";
 
@@ -18,11 +19,14 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
   const move = useMovePost();
   const now = useShareNow();
   const del = useDeletePost();
+  const editText = useEditPostText();
+  const [text, setText] = useState(post.text);
+  const [editingText, setEditingText] = useState(false);
   const [date, setDate] = useState(post.dueAt ? dayKey(post.dueAt) : dayKey(Date.now() + 86_400_000));
   const [time, setTime] = useState(post.dueAt ? timeKey(post.dueAt) : "19:00");
   const editable = post.status === "scheduled" || post.status === "draft" || post.status === "error";
-  const err = move.error ?? now.error ?? del.error;
-  const busy = move.isPending || now.isPending || del.isPending;
+  const err = move.error ?? now.error ?? del.error ?? editText.error;
+  const busy = move.isPending || now.isPending || del.isPending || editText.isPending;
   const target = fromTb(date, time);
 
   return (
@@ -44,7 +48,42 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
 
         {post.error ? <p className="rounded-lg bg-red-500/15 p-2 text-sm text-red-300">⚠️ {post.error}</p> : null}
         {post.mediaUrl ? <video src={post.mediaUrl} controls playsInline preload="metadata" className="max-h-[45vh] w-full rounded-xl bg-black" /> : null}
-        <p className="whitespace-pre-wrap text-sm">{post.text || <span className="text-white/40">Без подписи</span>}</p>
+        {editingText ? (
+          <div className="space-y-2">
+            <textarea
+              autoFocus
+              rows={7}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              className="w-full rounded-lg border border-white/15 bg-ink-deep p-2.5 text-sm text-white focus:border-brand focus:outline-none"
+            />
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={busy || text.length > (TEXT_LIMITS[post.service] ?? 5000)}
+                onClick={() => editText.mutate({ id: post.id, text }, { onSuccess: () => setEditingText(false) })}
+                className="rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40"
+              >
+                {editText.isPending ? "Сохраняю…" : "Сохранить подпись"}
+              </button>
+              <button type="button" onClick={() => setEditingText(false)} className="text-sm text-white/55">
+                Отмена
+              </button>
+              <span className="ml-auto text-xs text-white/45">
+                {text.length} / {TEXT_LIMITS[post.service] ?? 5000}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <p className="whitespace-pre-wrap text-sm">{(editText.data?.post.text ?? post.text) || <span className="text-amber-300">Без подписи</span>}</p>
+            {editable ? (
+              <button type="button" onClick={() => setEditingText(true)} className="text-sm font-semibold text-brand-light">
+                ✎ {post.text ? "Изменить подпись" : "Добавить подпись"}
+              </button>
+            ) : null}
+          </div>
+        )}
         {post.externalLink ? (
           <a href={post.externalLink} target="_blank" rel="noreferrer" className="inline-block text-sm font-semibold text-brand-light">
             Открыть в соцсети ↗

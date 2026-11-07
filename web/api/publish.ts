@@ -44,6 +44,14 @@ export function useMovePost() {
   });
 }
 
+export function useEditPostText() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, text }: { id: string; text: string }) => apiPost(`/publish/posts/${encodeURIComponent(id)}/text`, PostResultSchema, { text }),
+    onSettled: () => qc.invalidateQueries({ queryKey: postsKey }),
+  });
+}
+
 export function useShareNow() {
   const qc = useQueryClient();
   return useMutation({

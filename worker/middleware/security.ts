@@ -10,7 +10,8 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self'",
-  "img-src 'self' data: blob:",
+  // превью постов из Buffer (картинки, не скрипты)
+  "img-src 'self' data: blob: https://images.buffer.com https://i.ytimg.com",
   "media-src 'self' blob:",
   "connect-src 'self'",
   "font-src 'self'",
