@@ -11,6 +11,9 @@ import { settings } from "./routes/settings";
 import { orders, ordersAgent } from "./routes/orders";
 import { publish, publishAgent } from "./routes/publish";
 import { setBufferApiUrl } from "./services/buffer";
+import { setGraphUrl } from "./services/meta";
+import { connect, connectCallback } from "./routes/connect";
+import { processDirectQueue } from "./services/direct";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -24,8 +27,11 @@ const app = new Hono<AppBindings>();
 const api = new Hono<AppBindings>();
 api.use("*", async (c, next) => {
   setBufferApiUrl(c.env.BUFFER_API_URL);
+  setGraphUrl(c.env.META_GRAPH_URL);
   await next();
 });
+// Возврат из Facebook после входа — без cookie (проверка по одноразовому state)
+api.route("/connect", connectCallback);
 // Автозагрузка с Mac — по токену, не из браузера (поэтому до проверки Origin)
 api.route("/ingest/agent/publish", publishAgent);
 api.route("/ingest/agent", ordersAgent);
@@ -39,6 +45,7 @@ api.route("/media", media);
 api.route("/settings", settings);
 api.route("/orders", orders);
 api.route("/publish", publish);
+api.route("/connect", connect);
 api.all("*", (c) => c.json({ error: "Не найдено" }, 404));
 api.onError((err, c) => {
   console.error("api error", err);
@@ -62,9 +69,15 @@ app.all("*", (c) => c.json({ error: "Не найдено" }, 404));
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(ensureMigrated(env.DB));
+  async scheduled(event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await ensureMigrated(env.DB);
+    setGraphUrl(env.META_GRAPH_URL);
+    if (event.cron === "* * * * *") {
+      // Каждую минуту: прямые посты (Instagram, Facebook), у которых подошло время
+      const n = await processDirectQueue(env);
+      if (n) console.log("direct queue: processed", n);
+      return;
+    }
     const removed = await cleanupOrphans(env.BUCKET, env.DB);
     console.log("cleanup: removed orphan files", removed);
     const stale = await cleanupStaleUploads(env.DB, env.BUCKET);

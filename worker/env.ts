@@ -8,6 +8,13 @@ export interface Env {
   UPLOAD_TOKEN?: string;
   /** Только для локальной проверки: адрес заглушки Buffer */
   BUFFER_API_URL?: string;
+  /** Приложение Meta (Instagram/Facebook напрямую) */
+  META_APP_ID?: string;
+  META_APP_SECRET?: string;
+  /** Ключ шифрования токенов соцсетей (base64, 32 байта) */
+  TOKEN_KEY?: string;
+  /** Только для локальной проверки: адрес заглушки Graph API */
+  META_GRAPH_URL?: string;
 }
 
 export type AppBindings = { Bindings: Env };

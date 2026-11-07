@@ -9,7 +9,9 @@ import {
   SnippetResultSchema,
   StatsSchema,
   BufferLimitsSchema,
+  DirectAccountsSchema,
   type BufferLimits,
+  type DirectAccounts,
   type SnippetInput,
   type SnippetList,
   type Stats,
@@ -131,4 +133,25 @@ export function useDeleteSnippet() {
 
 export function useBufferLimits() {
   return useQuery<BufferLimits>({ queryKey: ["buffer-limits"], queryFn: () => apiGet("/publish/limits", BufferLimitsSchema), staleTime: 10 * 60_000, retry: false });
+}
+
+export const directKey = ["direct-accounts"] as const;
+export function useDirectAccounts() {
+  return useQuery<DirectAccounts>({ queryKey: directKey, queryFn: () => apiGet("/connect/accounts", DirectAccountsSchema), staleTime: 60_000 });
+}
+export function useDisconnect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/v2/connect/accounts/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "same-origin" });
+      const data: unknown = await res.json().catch(() => null);
+      if (res.ok && OkSchema.safeParse(data).success) return;
+      const err = ApiErrorSchema.safeParse(data);
+      throw new ApiRequestError(err.success ? err.data.error : `Ошибка (${res.status})`, res.status);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: directKey });
+      void qc.invalidateQueries({ queryKey: channelsKey });
+    },
+  });
 }

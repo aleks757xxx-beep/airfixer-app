@@ -318,3 +318,10 @@ export const BufferLimitsSchema = z.object({
   daily: z.array(z.object({ channelId: z.string(), limit: z.number().int().nullable(), scheduled: z.number().int(), sent: z.number().int(), isAtLimit: z.boolean() })),
 });
 export type BufferLimits = z.infer<typeof BufferLimitsSchema>;
+
+/** Аккаунты, подключённые напрямую (без Buffer). */
+export const DirectAccountsSchema = z.object({
+  items: z.array(ChannelSchema.extend({ replaces: z.string().nullable() })),
+  meta: z.object({ configured: z.boolean() }),
+});
+export type DirectAccounts = z.infer<typeof DirectAccountsSchema>;

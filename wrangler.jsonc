@@ -26,7 +26,7 @@
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
 
   // Ежедневно 07:00 по Тбилиси: очистка старых роликов (позже — сбор статистики)
-  "triggers": { "crons": ["0 3 * * *"] },
+  "triggers": { "crons": ["0 3 * * *", "* * * * *"] },
 
   // Адрес приложения
   "routes": [{ "pattern": "app.airfixer.ge", "custom_domain": true }]

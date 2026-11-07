@@ -3,7 +3,55 @@ import { Card, Skeleton, StatusDot } from "../../components/ui/Card";
 import { useLogout } from "../../api/auth";
 import { useState } from "react";
 import { useSaveSettings, useSettings } from "../../api/settings";
-import { useBufferLimits, useChannels } from "../../api/publish";
+import { useBufferLimits, useChannels, useDirectAccounts, useDisconnect } from "../../api/publish";
+import { ServiceSquare } from "../publish/PostCard";
+
+/** Соцсети напрямую (без Buffer): подключить Instagram и Facebook, список, отключить. */
+function DirectConnections() {
+  const q = useDirectAccounts();
+  const disc = useDisconnect();
+  const params = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+  const connected = params.get("connected");
+  const error = params.get("connect_error");
+  return (
+    <div className="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
+      <p className="font-semibold">Публикация напрямую (без Buffer)</p>
+      {connected === "meta" ? (
+        <p className="rounded-lg bg-wa/15 p-2 text-wa">
+          ✓ Подключено: {params.get("n")} аккаунт(ов), из них Instagram: {params.get("ig")}
+        </p>
+      ) : null}
+      {error ? <p className="rounded-lg bg-red-500/15 p-2 text-red-300">⚠️ {error}</p> : null}
+      {q.isError ? <p className="text-red-400">{q.error.message}</p> : null}
+      <ul className="space-y-1.5">
+        {(q.data?.items ?? []).map((a) => (
+          <li key={a.id} className="flex items-center gap-2">
+            <ServiceSquare service={a.service} />
+            <span>{a.displayName || a.name}</span>
+            {a.replaces ? <span className="text-xs text-white/40">вместо Buffer</span> : null}
+            <button
+              type="button"
+              disabled={disc.isPending}
+              onClick={() => window.confirm(`Отключить ${a.name}? Запланированные прямые посты этого аккаунта удалятся.`) && disc.mutate(a.id)}
+              className="ml-auto text-xs font-semibold text-red-400"
+            >
+              Отключить
+            </button>
+          </li>
+        ))}
+      </ul>
+      {q.data && !q.data.meta.configured ? (
+        <p className="text-amber-300">Чтобы подключить Instagram и Facebook, в Cloudflare нужны ключи приложения Meta — добавим вместе с Claude.</p>
+      ) : null}
+      <a
+        href="/api/v2/connect/meta/start"
+        className={`inline-block rounded-full px-4 py-2 font-bold text-white ${q.data?.meta.configured ? "bg-[#1877f2]" : "pointer-events-none bg-white/10 text-white/40"}`}
+      >
+        {(q.data?.items.length ?? 0) > 0 ? "Переподключить Instagram и Facebook" : "Подключить Instagram и Facebook"}
+      </a>
+    </div>
+  );
+}
 
 /** Тариф Buffer: сколько каналов разрешено, заблокированные каналы, запланированные посты. */
 function BufferPlan() {
@@ -11,7 +59,7 @@ function BufferPlan() {
   const ch = useChannels();
   if (lim.isPending || ch.isPending) return <p className="mt-5 border-t border-white/10 pt-4 text-sm text-white/50">Тариф Buffer: загружаю…</p>;
   if (lim.isError) return <p className="mt-5 border-t border-white/10 pt-4 text-sm text-red-400">Тариф Buffer: {lim.error.message}</p>;
-  const chans = ch.data?.items ?? [];
+  const chans = (ch.data?.items ?? []).filter((c) => !/^(ig|fb|yt):/.test(c.id));
   const locked = chans.filter((c) => c.isLocked);
   const over = chans.length > lim.data.channels;
   return (
@@ -118,6 +166,7 @@ export function StatusPage() {
           </li>
         ))}
       </ul>
+      <DirectConnections />
       <BufferPlan />
       <ClaudeLinkSetting />
       <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">

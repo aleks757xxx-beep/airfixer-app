@@ -6,7 +6,7 @@ export type Route = "calendar" | "library" | "posts" | "stats" | "status";
 const ROUTES: ReadonlyArray<Route> = ["calendar", "library", "posts", "stats", "status"];
 
 function parse(hash: string): Route {
-  const r = hash.replace(/^#\/?/, "");
+  const r = hash.replace(/^#\/?/, "").split("?")[0] ?? "";
   return (ROUTES as ReadonlyArray<string>).includes(r) ? (r as Route) : "calendar";
 }
 
