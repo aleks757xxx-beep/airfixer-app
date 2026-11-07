@@ -13,12 +13,15 @@ export default {
     // Видео отдаются публично — их скачивает Buffer в момент публикации
     if (url.pathname.startsWith("/media/")) return serveMedia(request, env, url);
 
-    // Всё остальное — только с паролем
-    if (!checkAuth(request, env)) {
-      return new Response("Нужен пароль", {
-        status: 401,
-        headers: { "WWW-Authenticate": 'Basic realm="AirFixer", charset="UTF-8"' },
-      });
+    // Вход / выход
+    if (url.pathname === "/login" && request.method === "GET") return html(loginPage(""));
+    if (url.pathname === "/login" && request.method === "POST") return login(request, env);
+    if (url.pathname === "/logout") return redirect("/login", clearCookie());
+
+    // Всё остальное — только после входа
+    if (!(await checkAuth(request, env))) {
+      if (url.pathname.startsWith("/api/")) return json({ error: "Нужно войти заново" }, 401);
+      return redirect("/login");
     }
 
     try {
@@ -46,15 +49,66 @@ export default {
 };
 
 // ---------- auth ----------
-function checkAuth(request, env) {
-  const h = request.headers.get("Authorization") || "";
-  if (!h.startsWith("Basic ") || !env.APP_PASSWORD) return false;
-  let decoded = "";
-  try {
-    decoded = new TextDecoder().decode(Uint8Array.from(atob(h.slice(6)), (c) => c.charCodeAt(0)));
-  } catch { return false; }
-  const pass = decoded.slice(decoded.indexOf(":") + 1);
-  return pass === env.APP_PASSWORD;
+const COOKIE = "af_session";
+const SESSION_DAYS = 30;
+
+async function hmac(secret, msg) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
+  return btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/[+/=]/g, (c) => ({ "+": "-", "/": "_", "=": "" }[c]));
+}
+
+function safeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
+async function checkAuth(request, env) {
+  if (!env.APP_PASSWORD) return false;
+  const m = (request.headers.get("Cookie") || "").match(new RegExp(COOKIE + "=([^;]+)"));
+  if (!m) return false;
+  const [exp, sig] = m[1].split(".");
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
+  return safeEqual(sig, await hmac(env.APP_PASSWORD, "airfixer-v1:" + exp));
+}
+
+async function login(request, env) {
+  const form = await request.formData().catch(() => null);
+  const pass = form ? String(form.get("password") || "").trim() : "";
+  if (!env.APP_PASSWORD) return html(loginPage("В Cloudflare не задан секрет APP_PASSWORD"), 500);
+  if (!safeEqual(pass, String(env.APP_PASSWORD).trim())) {
+    await new Promise((r) => setTimeout(r, 800));
+    return html(loginPage("Неверный пароль"), 401);
+  }
+  const exp = Date.now() + SESSION_DAYS * 24 * 3600 * 1000;
+  const token = exp + "." + (await hmac(env.APP_PASSWORD, "airfixer-v1:" + exp));
+  return redirect("/", `${COOKIE}=${token}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly; Secure; SameSite=Lax`);
+}
+
+const clearCookie = () => `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+
+function redirect(to, cookie) {
+  const h = new Headers({ Location: to });
+  if (cookie) h.append("Set-Cookie", cookie);
+  return new Response(null, { status: 303, headers: h });
+}
+
+function loginPage(err) {
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AirFixer — вход</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#2D2C38;color:#fff;font-family:Inter,Helvetica,Arial,sans-serif;padding:16px}
+form{width:100%;max-width:360px;background:#1f1e29;border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:28px}
+h1{margin:0 0 6px;font-size:26px;font-weight:800}p{margin:0 0 20px;color:#6E8BFF;font-weight:600}
+input{width:100%;box-sizing:border-box;background:#10121A;border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:12px;padding:14px;font:16px Inter,sans-serif;margin-bottom:14px}
+button{width:100%;border:0;border-radius:999px;padding:15px;font:700 17px Inter,sans-serif;color:#fff;background:#2AABEE;cursor:pointer}
+.err{color:#ff7b7b;margin-bottom:12px;font-weight:600}</style></head><body>
+<form method="post" action="/login"><h1>🍁 AirFixer</h1><p>Постинг</p>
+${err ? `<div class="err">${err}</div>` : ""}
+<input type="password" name="password" placeholder="Пароль" autocomplete="current-password" autofocus required>
+<button type="submit">Войти</button></form></body></html>`;
 }
 
 // ---------- media ----------
@@ -163,7 +217,7 @@ async function schedule(request, env, url) {
 // ---------- utils ----------
 const json = (o, status = 200) =>
   new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json; charset=utf-8" } });
-const html = (t) => new Response(t, { headers: { "content-type": "text/html; charset=utf-8" } });
+const html = (t, status = 200) => new Response(t, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
 // ---------- страница приложения ----------
 const PAGE = `<!doctype html>
@@ -190,7 +244,7 @@ textarea{min-height:130px;resize:vertical}
 .btn:disabled{opacity:.5}.row{display:flex;gap:10px}.row>*{flex:1}
 .small{font-size:13px;color:var(--muted);margin-top:6px}.res div{padding:6px 0}.ok{color:var(--wa)}.err{color:#ff7b7b}
 </style></head><body>
-<header>🍁 AirFixer <span>Постинг</span></header>
+<header>🍁 AirFixer <span>Постинг · <a href="/logout" style="color:inherit">выйти</a></span></header>
 <main>
 <h1>Новый пост</h1><div class="sub">Видео · Подпись · Время · Все соцсети</div>
 
