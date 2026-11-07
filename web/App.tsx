@@ -3,6 +3,7 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { StatusPage } from "./features/status/StatusPage";
 import { Placeholder } from "./features/Placeholder";
+import { useLogout } from "./api/auth";
 
 function Screen({ route }: { route: Route }) {
   switch (route) {
@@ -19,6 +20,7 @@ function Screen({ route }: { route: Route }) {
 
 export function App() {
   const route = useRoute();
+  const logout = useLogout();
   return (
     <div className="min-h-dvh pb-20 md:pb-0">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/85 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-ink-deep/85">
@@ -37,8 +39,16 @@ export function App() {
             </a>
           ))}
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
+          <button
+            type="button"
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+            className="rounded-full px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100 dark:text-white/60 dark:hover:bg-white/10"
+          >
+            Выйти
+          </button>
         </div>
       </header>
 

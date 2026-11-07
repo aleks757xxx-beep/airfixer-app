@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { AppBindings, Env } from "./env";
 import { securityHeaders, sameOrigin } from "./middleware/security";
 import { health } from "./routes/health";
+import { auth } from "./routes/auth";
+import { requireAuth } from "./middleware/auth";
 import { ensureMigrated } from "./lib/migrate";
 import { cleanupOldVideos, serveMedia } from "./services/storage";
 
@@ -16,6 +18,9 @@ const app = new Hono<AppBindings>();
 // API
 const api = new Hono<AppBindings>();
 api.use("*", sameOrigin);
+api.route("/auth", auth);
+// Всё остальное — только после входа (пароль + код)
+api.use("*", requireAuth);
 api.route("/health", health);
 api.all("*", (c) => c.json({ error: "Не найдено" }, 404));
 api.onError((err, c) => {

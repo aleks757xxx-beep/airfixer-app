@@ -14,3 +14,9 @@ Cloudflare Worker (Hono + TypeScript) + интерфейс React/Vite/Tailwind. 
 
 ## Проверка перед отправкой
 `npm run check` — типы (строгий TS) + сборка интерфейса.
+
+## Вход
+Пароль (`APP_PASSWORD`) + 6 цифр из Google Authenticator. Устройство, где ввели код, запоминается на 30 дней (код не спрашивается), сессия — 30 дней. 8 неверных попыток с одного IP → пауза 15 минут. «Выйти на всех устройствах» — в разделе «Состояние».
+
+**Потерял телефон с кодами:** Cloudflare → Storage & Databases → D1 → `postfixer` → Console → выполнить
+`DELETE FROM auth_settings; DELETE FROM trusted_devices; DELETE FROM sessions;` → при следующем входе приложение предложит подключить код заново.

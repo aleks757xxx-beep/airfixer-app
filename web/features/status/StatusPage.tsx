@@ -1,9 +1,11 @@
 import { useHealth } from "../../api/hooks";
 import { Card, Skeleton, StatusDot } from "../../components/ui/Card";
+import { useLogout } from "../../api/auth";
 
 /** Состояние системы: база, хранилище, секреты. */
 export function StatusPage() {
   const q = useHealth();
+  const logoutAll = useLogout(true);
 
   if (q.isPending) {
     return (
@@ -46,6 +48,18 @@ export function StatusPage() {
           </li>
         ))}
       </ul>
+      <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">
+        <button
+          type="button"
+          disabled={logoutAll.isPending}
+          onClick={() => {
+            if (window.confirm("Выйти на всех устройствах? Код из приложения понадобится снова везде.")) logoutAll.mutate();
+          }}
+          className="text-sm font-semibold text-red-500"
+        >
+          Выйти на всех устройствах (потерял телефон)
+        </button>
+      </div>
     </Card>
   );
 }
