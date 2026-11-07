@@ -46,7 +46,10 @@ export async function serveMedia(request: Request, bucket: R2Bucket, key: string
  * (удалённые из библиотеки или «сироты» старше суток). Ролики из библиотеки не трогаем.
  */
 export async function cleanupOrphans(bucket: R2Bucket, db: D1Database): Promise<number> {
-  const live = await db.prepare("SELECT r2_key FROM media WHERE deleted_at IS NULL").all<{ r2_key: string }>();
+  // ролики библиотеки + лёгкие копии для Telegram («имя.tg.mp4»)
+  const live = await db
+    .prepare("SELECT r2_key FROM media WHERE deleted_at IS NULL UNION SELECT r2_key FROM media_variants")
+    .all<{ r2_key: string }>();
   const keep = new Set(live.results.map((r) => r.r2_key));
   const limit = Date.now() - ORPHAN_GRACE_MS;
   let cursor: string | undefined;

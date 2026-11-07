@@ -15,6 +15,9 @@ export interface Env {
   TOKEN_KEY?: string;
   /** Только для локальной проверки: адрес заглушки Graph API */
   META_GRAPH_URL?: string;
+  /** Вход через Instagram (аккаунт без страницы Facebook): Instagram App ID и секрет из приложения Meta */
+  INSTAGRAM_APP_ID?: string;
+  INSTAGRAM_APP_SECRET?: string;
   /** Бот Telegram для публикации в канал (секрет от @BotFather) */
   TG_BOT_TOKEN?: string;
   /** Только для локальной проверки (заглушка Bot API) */

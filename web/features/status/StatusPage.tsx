@@ -20,6 +20,7 @@ function DirectConnections() {
         Instagram и Facebook публикуются прямо из PostFixer, без Buffer. Кнопка ниже откроет вход в Facebook: отметьте страницу и оба Instagram — после
         этого они появятся здесь списком. «Вместо Buffer» — этот канал больше не идёт через Buffer.
       </p>
+      {connected === "instagram" ? <p className="rounded-lg bg-wa/15 p-2 text-wa">✓ Instagram подключён: {params.get("name")}</p> : null}
       {connected === "meta" ? (
         <p className="rounded-lg bg-wa/15 p-2 text-wa">
           ✓ Подключено: {params.get("n")} аккаунт(ов), из них Instagram: {params.get("ig")}
@@ -52,6 +53,19 @@ function DirectConnections() {
         className={`inline-block rounded-full px-4 py-2 font-bold text-white ${q.data?.meta.configured ? "bg-[#1877f2]" : "pointer-events-none bg-white/10 text-white/40"}`}
       >
         {(q.data?.items ?? []).some((a) => a.service === "instagram" || a.service === "facebook") ? "Переподключить Instagram и Facebook" : "Подключить Instagram и Facebook"}
+      </a>
+      <p className="pt-2 text-xs text-white/50">
+        Instagram, который не привязан к странице Facebook (например, airfixertbls), подключается отдельно — входом в сам Instagram. Войдите тем аккаунтом,
+        который нужно подключить.
+      </p>
+      {q.data && !q.data.instagram?.configured ? (
+        <p className="text-xs text-amber-300">Для этого в Cloudflare нужны секреты INSTAGRAM_APP_ID и INSTAGRAM_APP_SECRET.</p>
+      ) : null}
+      <a
+        href="/api/v2/connect/instagram/start"
+        className={`inline-block rounded-full px-4 py-2 font-bold text-white ${q.data?.instagram?.configured ? "bg-gradient-to-r from-fuchsia-500 to-amber-500" : "pointer-events-none bg-white/10 text-white/40"}`}
+      >
+        Подключить Instagram без страницы
       </a>
     </div>
   );

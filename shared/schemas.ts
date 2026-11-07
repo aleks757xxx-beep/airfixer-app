@@ -341,5 +341,6 @@ export const DirectAccountsSchema = z.object({
   items: z.array(ChannelSchema.extend({ replaces: z.string().nullable() })),
   meta: z.object({ configured: z.boolean() }),
   telegram: z.object({ configured: z.boolean() }).optional(),
+  instagram: z.object({ configured: z.boolean() }).optional(),
 });
 export type DirectAccounts = z.infer<typeof DirectAccountsSchema>;

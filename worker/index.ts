@@ -14,7 +14,7 @@ import { setBufferApiUrl } from "./services/buffer";
 import { setGraphUrl } from "./services/meta";
 import { setTgApiUrl } from "./services/telegram";
 import { connect, connectCallback } from "./routes/connect";
-import { processDirectQueue } from "./services/direct";
+import { processDirectQueue, refreshInstagramTokens } from "./services/direct";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -85,5 +85,7 @@ export default {
     console.log("cleanup: removed orphan files", removed);
     const stale = await cleanupStaleUploads(env.DB, env.BUCKET);
     console.log("cleanup: aborted stale uploads", stale);
+    const refreshed = await refreshInstagramTokens(env);
+    if (refreshed) console.log("instagram tokens refreshed", refreshed);
   },
 } satisfies ExportedHandler<Env>;
