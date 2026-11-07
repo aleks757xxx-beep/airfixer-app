@@ -1,22 +1,36 @@
 {
-  // AirFixer — приложение для постинга
+  // PostFixer — приложение для постинга AirFixer
   "name": "airfixer-app",
-  "main": "src/index.js",
+  "main": "worker/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
 
   // Не стирать переменные, добавленные в панели Cloudflare, при каждом деплое
   "keep_vars": true,
 
+  // Перед деплоем собираем интерфейс (web/ → dist/next)
+  "build": { "command": "npm run build:web" },
+
+  // Интерфейс: файлы отдаёт Worker сам (чтобы добавить заголовки безопасности)
+  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true },
+
   // Хранилище видео
   "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "airfixer-video" }],
 
-  // Автоочистка старых роликов: каждый день в 07:00 по Тбилиси
+  // База данных (таблицы создаются сами при первом запросе — worker/lib/migrate.ts)
+  "d1_databases": [
+    { "binding": "DB", "database_name": "postfixer", "database_id": "da1b44f7-3623-41fa-a9d3-2fe98c37eeda" }
+  ],
+
+  // SQL-файлы миграций подключаются как текст
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+
+  // Ежедневно 07:00 по Тбилиси: очистка старых роликов (позже — сбор статистики)
   "triggers": { "crons": ["0 3 * * *"] },
 
   // Адрес приложения
   "routes": [{ "pattern": "app.airfixer.ge", "custom_domain": true }]
 
-  // Секреты (задаются в панели Cloudflare, не в коде):
-  //   BUFFER_API_KEY, APP_PASSWORD
+  // Секреты (Settings → Runtime variables and secrets, тип Secret):
+  //   APP_PASSWORD, BUFFER_API_KEY, UPLOAD_TOKEN
 }

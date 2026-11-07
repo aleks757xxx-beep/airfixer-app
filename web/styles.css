@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Тёмная тема — по классу .dark на <html> (выбор: система / светлая / тёмная) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Цвета в стиле airfixer.ge */
+@theme {
+  --font-sans: Inter, "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --color-brand: #3763f4;
+  --color-brand-light: #6e8bff;
+  --color-tg: #2aabee;
+  --color-wa: #25d366;
+  --color-ink: #2d2c38;
+  --color-ink-deep: #10121a;
+  --color-ink-card: #1f1e29;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-ink dark:text-white;
+}

@@ -1,6 +1,30 @@
 {
   "name": "airfixer-app",
   "private": true,
-  "scripts": { "deploy": "wrangler deploy", "dev": "wrangler dev" },
-  "devDependencies": { "wrangler": "^4.0.0" }
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "build:web": "vite build",
+    "typecheck": "tsc -p tsconfig.worker.json && tsc -p tsconfig.web.json",
+    "check": "npm run typecheck && npm run build:web"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261107.1",
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
+    "wrangler": "^4.158.0"
+  },
+  "type": "module",
+  "dependencies": {
+    "@tanstack/react-query": "^5.107.1",
+    "hono": "^4.13.17",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  }
 }
