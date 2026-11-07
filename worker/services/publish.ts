@@ -245,30 +245,113 @@ async function oneResult(apiKey: string, db: D1Database, query: string, field: s
   return toPost(r.post, media);
 }
 
-/** Перенести пост на другое время. */
-export function movePost(apiKey: string, db: D1Database, id: string, dueAt: number): Promise<BufferPost> {
-  return oneResult(
+const CurrentPost = z.object({
+  post: z.object({
+    id: z.string(),
+    channelService: z.string(),
+    text: z.string(),
+    assets: z.array(z.object({ source: z.string(), type: z.string(), video: z.object({ title: z.string().nullable() }).optional() })),
+    metadata: z
+      .object({
+        __typename: z.string(),
+        title: z.string().nullable().optional(),
+        type: z.string().nullable().optional(),
+        privacy: z.string().nullable().optional(),
+        madeForKids: z.boolean().nullable().optional(),
+        notifySubscribers: z.boolean().nullable().optional(),
+        shouldShareToFeed: z.boolean().nullable().optional(),
+        firstComment: z.string().nullable().optional(),
+      })
+      .nullable(),
+  }),
+});
+
+/**
+ * Buffer при правке требует пост целиком (ролик + тип), поэтому берём текущий пост
+ * и отправляем его обратно с изменениями.
+ */
+async function fullEditInput(
+  apiKey: string,
+  id: string,
+  change: { text?: string; title?: string; mode?: string; dueAt?: number },
+): Promise<Record<string, unknown>> {
+  const d = await bufferQuery(
     apiKey,
-    db,
-    `mutation($input: EditPostInput!) { editPost(input: $input) { ${RESULT_FRAGMENT} } }`,
-    "editPost",
-    { input: { id, mode: "customScheduled", schedulingType: "automatic", dueAt: new Date(dueAt).toISOString() } },
+    `query($id: PostId!) { post(input: { id: $id }) { id channelService text
+      assets { source type ... on VideoAsset { video { title } } }
+      metadata { __typename
+        ... on YoutubePostMetadata { title privacy madeForKids notifySubscribers }
+        ... on TiktokPostMetadata { title }
+        ... on InstagramPostMetadata { type shouldShareToFeed firstComment }
+        ... on FacebookPostMetadata { type firstComment }
+        ... on GoogleBusinessPostMetadata { type title } } } }`,
+    CurrentPost,
+    { id },
   );
+  const p = d.post;
+  const m = p.metadata;
+  const title = change.title ?? m?.title ?? p.assets.find((a) => a.video?.title)?.video?.title ?? undefined;
+  const assets = p.assets.map((a) =>
+    a.type === "video" ? { video: { url: a.source, ...(title ? { metadata: { title } } : {}) } } : { image: { url: a.source } },
+  );
+  let metadata: Record<string, unknown> | undefined;
+  switch (p.channelService) {
+    case "instagram":
+      metadata = { instagram: { type: m?.type ?? "reel", shouldShareToFeed: m?.shouldShareToFeed ?? true, ...(m?.firstComment ? { firstComment: m.firstComment } : {}) } };
+      break;
+    case "facebook":
+      metadata = { facebook: { type: m?.type ?? "reel", ...(m?.firstComment ? { firstComment: m.firstComment } : {}) } };
+      break;
+    case "youtube":
+      metadata = {
+        youtube: {
+          title: title || "AirFixer",
+          categoryId: "26",
+          privacy: m?.privacy ?? "public",
+          madeForKids: m?.madeForKids ?? false,
+          notifySubscribers: m?.notifySubscribers ?? true,
+        },
+      };
+      break;
+    case "tiktok":
+      metadata = title ? { tiktok: { title } } : undefined;
+      break;
+    case "googlebusiness":
+      metadata = { google: { type: m?.type ?? "whats_new", ...(title ? { title } : {}) } };
+      break;
+  }
+  return {
+    id,
+    text: change.text ?? p.text,
+    assets,
+    schedulingType: "automatic",
+    ...(metadata ? { metadata } : {}),
+    ...(change.mode ? { mode: change.mode } : {}),
+    ...(change.dueAt !== undefined ? { dueAt: new Date(change.dueAt).toISOString() } : {}),
+  };
 }
 
-/** Изменить подпись поста. */
-export function editPostText(apiKey: string, db: D1Database, id: string, text: string, title?: { service: string; title: string }): Promise<BufferPost> {
-  const metadata = title && (title.service === "youtube" || title.service === "tiktok") ? metadataFor(title.service, title.title) : undefined;
-  return oneResult(apiKey, db, `mutation($input: EditPostInput!) { editPost(input: $input) { ${RESULT_FRAGMENT} } }`, "editPost", {
-    input: { id, text, ...(metadata ? { metadata } : {}) },
-  });
+const EDIT = `mutation($input: EditPostInput!) { editPost(input: $input) { ${RESULT_FRAGMENT} } }`;
+
+/** Перенести пост на другое время. */
+export async function movePost(apiKey: string, db: D1Database, id: string, dueAt: number): Promise<BufferPost> {
+  return oneResult(apiKey, db, EDIT, "editPost", { input: await fullEditInput(apiKey, id, { mode: "customScheduled", dueAt }) });
+}
+
+/** Изменить подпись поста (и название YouTube/TikTok). */
+export async function editPostText(
+  apiKey: string,
+  db: D1Database,
+  id: string,
+  text: string,
+  title?: { service: string; title: string },
+): Promise<BufferPost> {
+  return oneResult(apiKey, db, EDIT, "editPost", { input: await fullEditInput(apiKey, id, { text, ...(title ? { title: title.title } : {}) }) });
 }
 
 /** Опубликовать сейчас. */
-export function sharePostNow(apiKey: string, db: D1Database, id: string): Promise<BufferPost> {
-  return oneResult(apiKey, db, `mutation($input: EditPostInput!) { editPost(input: $input) { ${RESULT_FRAGMENT} } }`, "editPost", {
-    input: { id, mode: "shareNow", schedulingType: "automatic" },
-  });
+export async function sharePostNow(apiKey: string, db: D1Database, id: string): Promise<BufferPost> {
+  return oneResult(apiKey, db, EDIT, "editPost", { input: await fullEditInput(apiKey, id, { mode: "shareNow" }) });
 }
 
 /** Удалить пост из Buffer. */
