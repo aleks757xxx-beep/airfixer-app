@@ -14,6 +14,7 @@ import {
   listSnippets,
   movePost,
   postStats,
+  bufferLimits,
   retryPost,
   sharePostNow,
   updateSnippet,
@@ -114,6 +115,13 @@ function build(author: "owner" | "claude") {
       if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 93 * 24 * 3600 * 1000) return c.json({ error: "Неверный период" }, 400);
       try {
         return c.json(await postStats(apiKey(c) ?? "", c.env.DB, from, to));
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    .get("/limits", async (c) => {
+      try {
+        return c.json(await bufferLimits(apiKey(c) ?? "", c.env.DB));
       } catch (e: unknown) {
         return fail(c, e);
       }

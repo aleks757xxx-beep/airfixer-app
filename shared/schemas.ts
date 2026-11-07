@@ -307,3 +307,12 @@ export type SnippetList = z.infer<typeof SnippetListSchema>;
 export const SnippetInputSchema = z.object({ name: z.string().trim().min(1, "Название").max(100), text: z.string().trim().min(1, "Текст").max(5000) });
 export type SnippetInput = z.infer<typeof SnippetInputSchema>;
 export const SnippetResultSchema = z.object({ snippet: SnippetSchema });
+
+/** Лимиты тарифа Buffer. */
+export const BufferLimitsSchema = z.object({
+  scheduledPosts: z.number().int(),
+  channels: z.number().int(),
+  scheduledNow: z.number().int(),
+  daily: z.array(z.object({ channelId: z.string(), limit: z.number().int().nullable(), scheduled: z.number().int(), sent: z.number().int(), isAtLimit: z.boolean() })),
+});
+export type BufferLimits = z.infer<typeof BufferLimitsSchema>;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { BufferPost, Channel, ComposeInput, ComposeResult, GoogleButton, ShareMode, Snippet, SnippetInput, StatPost, Stats } from "../../shared/schemas";
+import type { BufferLimits, BufferPost, Channel, ComposeInput, ComposeResult, GoogleButton, ShareMode, Snippet, SnippetInput, StatPost, Stats } from "../../shared/schemas";
 import { BufferError, bufferQuery } from "./buffer";
 
 /** Публикация через Buffer: каналы, посты, создание, перенос, удаление. */
@@ -528,4 +528,29 @@ export async function deleteSnippet(apiKey: string, db: D1Database, id: string):
   );
   if (!d.deleteSnippet.id) throw new BufferError(d.deleteSnippet.message ?? "Не удалось удалить вставку");
   await dropSnippets(db);
+}
+
+// ---- Лимиты тарифа (только чтение) ----
+export async function bufferLimits(apiKey: string, db: D1Database): Promise<BufferLimits> {
+  const org = await organizationId(apiKey);
+  const channels = await listChannels(apiKey, db);
+  const d = await bufferQuery(
+    apiKey,
+    `query($ids: [ChannelId!]!) {
+      account { organizations { id limits { scheduledPosts channels } } }
+      dailyPostingLimits(input: { channelIds: $ids }) { channelId limit scheduled sent isAtLimit } }`,
+    z.object({
+      account: z.object({ organizations: z.array(z.object({ id: z.string(), limits: z.object({ scheduledPosts: z.number(), channels: z.number() }) })) }),
+      dailyPostingLimits: z.array(z.object({ channelId: z.string(), limit: z.number().nullable(), scheduled: z.number(), sent: z.number(), isAtLimit: z.boolean() })),
+    }),
+    { ids: channels.map((c) => c.id) },
+  );
+  const o = d.account.organizations.find((x) => x.id === org) ?? d.account.organizations[0];
+  const scheduled = await fetchPosts(apiKey, { status: ["scheduled"] }, 500);
+  return {
+    scheduledPosts: o?.limits.scheduledPosts ?? 0,
+    channels: o?.limits.channels ?? 0,
+    scheduledNow: scheduled.length,
+    daily: d.dailyPostingLimits,
+  };
 }
