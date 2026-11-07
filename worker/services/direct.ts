@@ -13,6 +13,7 @@ import {
   type MetaPage,
 } from "./meta";
 import { TelegramError, sendVideo, type TgChat } from "./telegram";
+import { readSettings } from "../routes/settings";
 
 /** Прямая публикация (без Buffer): аккаунты, своя очередь со слотами, отправка к сроку (cron). */
 
@@ -398,7 +399,8 @@ async function stepTelegram(env: Env, p: PostRow, a: AccountRow): Promise<void> 
   const blob = new Blob([await obj.arrayBuffer()], { type: obj.httpMetadata?.contentType ?? "video/mp4" });
   let sent: { messageId: number; link: string };
   try {
-    sent = await sendVideo(token, a.external_id, blob, name, p.text);
+    const s = await readSettings(db);
+    sent = await sendVideo(token, a.external_id, blob, name, p.text, s.tgButtonUrl ? { text: s.tgButtonText || "📅 Записаться", url: s.tgButtonUrl } : null);
   } catch (e: unknown) {
     if (e instanceof TelegramError) return fail(db, p, e.message);
     return fail(db, p, "Связь с Telegram прервалась — проверьте канал; если поста нет, нажмите «Повторить»");

@@ -107,8 +107,16 @@ export function messageLink(chat: { id: number; username?: string }, messageId: 
 }
 
 /** Отправить ролик в канал (файл до 50 МБ). */
-export async function sendVideo(token: string, chatId: string, video: Blob, fileName: string, caption: string): Promise<{ messageId: number; link: string }> {
+export async function sendVideo(
+  token: string,
+  chatId: string,
+  video: Blob,
+  fileName: string,
+  caption: string,
+  button?: { text: string; url: string } | null,
+): Promise<{ messageId: number; link: string }> {
   const fd = new FormData();
+  if (button?.text && button.url) fd.set("reply_markup", JSON.stringify({ inline_keyboard: [[{ text: button.text, url: button.url }]] }));
   fd.set("chat_id", chatId);
   fd.set("video", video, fileName);
   fd.set("supports_streaming", "true");

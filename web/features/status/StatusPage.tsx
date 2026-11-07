@@ -102,7 +102,50 @@ function TelegramConnect() {
       )}
       {conn.isError ? <p className="rounded-lg bg-red-500/15 p-2 text-red-300">⚠️ {conn.error.message}</p> : null}
       {conn.isSuccess ? <p className="rounded-lg bg-wa/15 p-2 text-wa">✓ Подключено: {conn.data.join(", ")}</p> : null}
+      <TelegramButtonSetting />
     </div>
+  );
+}
+
+/** Кнопка под каждым постом в Telegram (по умолчанию — «📅 Записаться» в бот записи). */
+function TelegramButtonSetting() {
+  const q = useSettings();
+  const save = useSaveSettings();
+  const [text, setText] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const t = text ?? q.data?.tgButtonText ?? "";
+  const u = url ?? q.data?.tgButtonUrl ?? "";
+  const dirty = text !== null || url !== null;
+  return (
+    <form
+      className="space-y-1.5 pt-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate({ tgButtonText: t.trim(), tgButtonUrl: u.trim() }, { onSuccess: () => (setText(null), setUrl(null)) });
+      }}
+    >
+      <p className="text-xs text-white/50">Кнопка под каждым постом в канале. Сотрите ссылку — постов без кнопки.</p>
+      <div className="flex flex-wrap gap-2">
+        <input
+          value={t}
+          onChange={(e) => setText(e.target.value)}
+          aria-label="Текст кнопки"
+          maxLength={40}
+          className="w-40 rounded-lg border border-white/15 bg-ink-deep p-2 text-sm text-white focus:border-brand focus:outline-none"
+        />
+        <input
+          value={u}
+          onChange={(e) => setUrl(e.target.value)}
+          aria-label="Ссылка кнопки"
+          inputMode="url"
+          className="min-w-0 flex-1 rounded-lg border border-white/15 bg-ink-deep p-2 text-sm text-white focus:border-brand focus:outline-none"
+        />
+        <button type="submit" disabled={!dirty || save.isPending} className="rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40">
+          Сохранить
+        </button>
+      </div>
+      {save.isError ? <p className="text-sm text-red-400">{save.error.message}</p> : null}
+    </form>
   );
 }
 

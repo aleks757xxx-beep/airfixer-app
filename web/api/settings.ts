@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { SettingsSchema, type Settings } from "../../shared/schemas";
+import { SettingsSchema, type Settings, type SettingsInput } from "../../shared/schemas";
 import { apiGet, apiPut } from "./client";
 
 export const settingsKey = ["settings"] as const;
@@ -11,7 +11,7 @@ export function useSettings() {
 export function useSaveSettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (s: Settings) => apiPut("/settings", SettingsSchema, s),
+    mutationFn: (s: SettingsInput) => apiPut("/settings", SettingsSchema, s),
     onSuccess: (data) => qc.setQueryData(settingsKey, data),
   });
 }

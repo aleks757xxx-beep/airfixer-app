@@ -128,9 +128,21 @@ export const ClaudeUrlSchema = z
   .trim()
   .max(500)
   .refine((u) => /^https:\/\/claude\.ai\/[A-Za-z0-9._~\/?#=&%-]*$/.test(u), "Ссылка должна начинаться с https://claude.ai/");
-export const SettingsSchema = z.object({ claudeUrl: z.string() });
+/** Кнопка под постами в Telegram — в бот записи для клиентов (решение владельца 08.11.2026). Пустая ссылка — без кнопки. */
+export const DEFAULT_TG_BUTTON = { text: "📅 Записаться", url: "https://t.me/fixerairbot" } as const;
+export const SettingsSchema = z.object({ claudeUrl: z.string(), tgButtonText: z.string(), tgButtonUrl: z.string() });
 export type Settings = z.infer<typeof SettingsSchema>;
-export const SettingsInputSchema = z.object({ claudeUrl: ClaudeUrlSchema });
+export const SettingsInputSchema = z.object({
+  claudeUrl: ClaudeUrlSchema.optional(),
+  tgButtonText: z.string().trim().max(40, "Текст кнопки — до 40 знаков").optional(),
+  tgButtonUrl: z
+    .string()
+    .trim()
+    .max(300)
+    .refine((u) => u === "" || /^https:\/\/\S+$/.test(u), "Ссылка кнопки должна начинаться с https://")
+    .optional(),
+});
+export type SettingsInput = z.infer<typeof SettingsInputSchema>;
 
 // ---------- Заказы монтажа ----------
 export const OrderStatusSchema = z.enum(["new", "in_work", "draft", "revise", "accepted", "cancelled"]);
