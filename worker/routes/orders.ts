@@ -165,6 +165,15 @@ export const orders = new Hono<AppBindings>()
 export const ordersAgent = new Hono<AppBindings>()
   .use("*", uploadToken)
   .use("*", migrated)
+  // Для Claude: журнал действий (входы, публикации) — разбирать проблемы. Только чтение, без IP.
+  .get("/audit", async (c) => {
+    const limit = Math.min(Math.max(Number(c.req.query("limit")) || 40, 1), 200);
+    const rows = await c.env.DB.prepare("SELECT at, action, details FROM audit_log ORDER BY at DESC LIMIT ?").bind(limit).all<{ at: number; action: string; details: string | null }>();
+    const fails = await c.env.DB.prepare("SELECT COUNT(*) AS n, COUNT(DISTINCT ip) AS ips, MAX(at) AS last FROM login_attempts WHERE at > ?")
+      .bind(Date.now() - 15 * 60_000)
+      .first<{ n: number; ips: number; last: number | null }>();
+    return c.json({ items: rows.results, failedLast15min: fails ?? { n: 0, ips: 0, last: null } });
+  })
   .get("/orders", async (c) => {
     const all = c.req.query("all") === "1";
     const body: OrderList = {
