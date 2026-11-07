@@ -1,18 +1,19 @@
 import { NAV, useRoute, type Route } from "./router";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { StatusPage } from "./features/status/StatusPage";
-import { Placeholder } from "./features/Placeholder";
 import { LibraryPage } from "./features/library/LibraryPage";
+import { CalendarPage } from "./features/publish/CalendarPage";
+import { PostsPage } from "./features/publish/PostsPage";
 import { AskClaudeButton, ClaudeToast } from "./features/claude/askClaude";
 
 function Screen({ route }: { route: Route }) {
   switch (route) {
     case "calendar":
-      return <Placeholder title="Календарь" text="Шаг 3: календарь в стиле Buffer с перетаскиванием роликов." />;
+      return <CalendarPage />;
     case "library":
       return <LibraryPage />;
     case "posts":
-      return <Placeholder title="Посты" text="Шаг 4: что запланировано, что вышло, ошибки." />;
+      return <PostsPage />;
     case "status":
       return <StatusPage />;
   }
@@ -42,7 +43,7 @@ export function App() {
       </header>
       <ClaudeToast />
 
-      <main className="mx-auto max-w-5xl p-4">
+      <main className={`mx-auto p-4 ${route === "calendar" ? "max-w-7xl" : "max-w-5xl"}`}>
         <ErrorBoundary key={route}>
           <Screen route={route} />
         </ErrorBoundary>

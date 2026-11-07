@@ -228,6 +228,18 @@ export const uploadToken: MiddlewareHandler<AppBindings> = async (c, next) => {
 export const ingest = new Hono<AppBindings>()
   .use("*", uploadToken)
   .use("*", migrated)
+  // Для Claude: ролики, удалённые в приложении, которые ещё лежат в «Готовом» (стереть с Mac)
+  .get("/deleted", async (c) => {
+    const rows = await c.env.DB.prepare(
+      "SELECT id, name, size, deleted_at FROM media WHERE deleted_at IS NOT NULL AND purged_at IS NULL AND source = 'gotovoe' ORDER BY deleted_at",
+    ).all<{ id: string; name: string; size: number; deleted_at: number }>();
+    return c.json({ items: rows.results.map((r) => ({ id: r.id, name: r.name, size: r.size, deletedAt: r.deleted_at })) });
+  })
+  .post("/deleted/:id/purged", async (c) => {
+    const res = await c.env.DB.prepare("UPDATE media SET purged_at = ? WHERE id = ? AND deleted_at IS NOT NULL").bind(Date.now(), c.req.param("id")).run();
+    if (!res.meta.changes) return c.json({ error: "Не найдено" }, 404);
+    return c.json({ ok: true as const });
+  })
   // Для Claude: вся библиотека (найти ролик по id/имени)
   .get("/media", async (c) => {
     const rows = await c.env.DB.prepare(

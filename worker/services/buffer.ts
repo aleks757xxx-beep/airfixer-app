@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-const BUFFER_API = "https://api.buffer.com";
+let BUFFER_API = "https://api.buffer.com";
+/** Только для локальной проверки (заглушка Buffer); в рабочем режиме не задаётся. */
+export function setBufferApiUrl(url: string | undefined): void {
+  if (url) BUFFER_API = url;
+}
 
 export class BufferError extends Error {
   constructor(message: string) {

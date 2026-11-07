@@ -53,7 +53,7 @@ function build(author: "owner" | "claude") {
         .bind(parsed.data.mediaId)
         .first<{ r2_key: string; name: string }>();
       if (!m) return c.json({ error: "Ролик не найден в библиотеке" }, 404);
-      const videoUrl = `${new URL(c.req.url).origin}/media/${m.r2_key}`;
+      const videoUrl = `https://${new URL(c.req.url).host}/media/${m.r2_key}`; // Buffer забирает ролик по https
       try {
         const result = await createPosts(apiKey(c) ?? "", c.env.DB, parsed.data, videoUrl, author);
         const ok = result.results.filter((r) => r.ok).length;

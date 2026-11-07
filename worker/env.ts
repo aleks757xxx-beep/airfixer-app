@@ -6,6 +6,8 @@ export interface Env {
   APP_PASSWORD?: string;
   BUFFER_API_KEY?: string;
   UPLOAD_TOKEN?: string;
+  /** Только для локальной проверки: адрес заглушки Buffer */
+  BUFFER_API_URL?: string;
 }
 
 export type AppBindings = { Bindings: Env };

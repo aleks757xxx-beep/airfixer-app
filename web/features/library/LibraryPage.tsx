@@ -7,6 +7,7 @@ import { formatBytes, formatDate, plural } from "../../lib/format";
 import { AskClaudeButton } from "../claude/askClaude";
 import { OrderForm } from "../orders/OrderForm";
 import { OrdersList } from "../orders/OrdersList";
+import { ComposeDialog } from "../publish/ComposeDialog";
 
 interface UploadJob {
   id: string;
@@ -92,6 +93,7 @@ function NoteBlock({ item }: { item: MediaItem }) {
 }
 
 function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: () => void; deleting: boolean }) {
+  const [composing, setComposing] = useState(false);
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-ink-card">
       <a href={item.url} target="_blank" rel="noreferrer" className="block bg-black">
@@ -104,6 +106,10 @@ function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: ()
         <p className="mt-1 text-xs text-white/55">
           {formatBytes(item.size)} · {formatDate(item.createdAt)} · {item.source === "gotovoe" ? "«Готовое»" : "загружено"}
         </p>
+        <button type="button" onClick={() => setComposing(true)} className="mt-2 w-full rounded-full bg-brand py-1.5 text-xs font-bold text-white">
+          📅 Запланировать
+        </button>
+        {composing ? <ComposeDialog media={item} onClose={() => setComposing(false)} /> : null}
         <NoteBlock item={item} />
         <AskClaudeButton item={item} className="mt-2 block text-xs font-semibold text-brand-light" />
         <button
@@ -244,7 +250,14 @@ export function LibraryPage() {
               item={it}
               deleting={del.isPending && del.variables === it.id}
               onDelete={() => {
-                if (window.confirm(`Удалить «${it.name}» из библиотеки?`)) del.mutate(it.id);
+                if (
+                  window.confirm(
+                    it.source === "gotovoe"
+                      ? `Удалить «${it.name}» насовсем?\n\nИз библиотеки — сразу, из папки «Готовое» — Claude сотрёт при следующей работе.`
+                      : `Удалить «${it.name}» из библиотеки?`,
+                  )
+                )
+                  del.mutate(it.id);
               }}
             />
           ))}

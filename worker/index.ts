@@ -10,6 +10,7 @@ import { cleanupStaleUploads, ingest, media } from "./routes/media";
 import { settings } from "./routes/settings";
 import { orders, ordersAgent } from "./routes/orders";
 import { publish, publishAgent } from "./routes/publish";
+import { setBufferApiUrl } from "./services/buffer";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -21,6 +22,10 @@ const app = new Hono<AppBindings>();
 
 // API
 const api = new Hono<AppBindings>();
+api.use("*", async (c, next) => {
+  setBufferApiUrl(c.env.BUFFER_API_URL);
+  await next();
+});
 // Автозагрузка с Mac — по токену, не из браузера (поэтому до проверки Origin)
 api.route("/ingest/agent/publish", publishAgent);
 api.route("/ingest/agent", ordersAgent);
