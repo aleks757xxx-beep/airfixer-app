@@ -2,10 +2,10 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// Интерфейс собирается в dist/next и открывается по адресу /next/ (пока старая версия живёт на «/»).
+// Интерфейс собирается в dist/ и открывается на app.airfixer.ge
 export default defineConfig({
   root: "web",
-  base: "/next/",
+  base: "/",
   plugins: [react(), tailwindcss()],
-  build: { outDir: "../dist/next", emptyOutDir: true, assetsInlineLimit: 0 },
+  build: { outDir: "../dist", emptyOutDir: true, assetsInlineLimit: 0 },
 });

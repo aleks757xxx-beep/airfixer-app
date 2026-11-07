@@ -3,24 +3,18 @@ import type { AppBindings, Env } from "./env";
 import { securityHeaders, sameOrigin } from "./middleware/security";
 import { health } from "./routes/health";
 import { ensureMigrated } from "./lib/migrate";
-import legacy from "./legacy.js";
+import { cleanupOldVideos, serveMedia } from "./services/storage";
 
 /**
- * PostFixer.
- *  /next/*      — новый интерфейс (React, dist/next), строгий CSP
- *  /api/v2/*    — новый API
- *  остальное    — старая версия (worker/legacy.js), пока её не заменят новые экраны
+ * PostFixer (app.airfixer.ge)
+ *  /api/v2/*  — API
+ *  /media/*   — ролики для Buffer (публично, ключи случайные)
+ *  остальное  — интерфейс (React, dist/), строгий CSP
  */
 const app = new Hono<AppBindings>();
 
-// Новый интерфейс
-app.use("/next/*", securityHeaders({ csp: true }));
-app.get("/next", (c) => c.redirect("/next/", 301));
-app.get("/next/*", (c) => c.env.ASSETS.fetch(c.req.raw));
-
-// Новый API
+// API
 const api = new Hono<AppBindings>();
-api.use("*", securityHeaders({ csp: true }));
 api.use("*", sameOrigin);
 api.route("/health", health);
 api.all("*", (c) => c.json({ error: "Не найдено" }, 404));
@@ -28,16 +22,27 @@ api.onError((err, c) => {
   console.error("api error", err);
   return c.json({ error: "Внутренняя ошибка" }, 500);
 });
-app.route("/api/v2", api);
 
-// Старая версия: базовые заголовки без CSP (у неё встроенные скрипты)
-app.use("*", securityHeaders({ csp: false }));
-app.all("*", (c) => legacy.fetch(c.req.raw, c.env));
+app.use("*", securityHeaders({ csp: true }));
+app.route("/api/v2", api);
+app.on(["GET", "HEAD"], "/media/*", (c) =>
+  serveMedia(c.req.raw, c.env.BUCKET, decodeURIComponent(new URL(c.req.url).pathname.slice("/media/".length))),
+);
+
+// Интерфейс: файл из dist/, иначе index.html (переходы внутри приложения)
+app.get("*", async (c) => {
+  const res = await c.env.ASSETS.fetch(c.req.raw);
+  if (res.status !== 404) return res;
+  const index = new URL("/", c.req.url);
+  return c.env.ASSETS.fetch(new Request(index, c.req.raw));
+});
+app.all("*", (c) => c.json({ error: "Не найдено" }, 404));
 
 export default {
   fetch: app.fetch,
-  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(ensureMigrated(env.DB));
-    await legacy.scheduled(event, env);
+    const removed = await cleanupOldVideos(env.BUCKET);
+    console.log("cleanup: removed videos", removed);
   },
 } satisfies ExportedHandler<Env>;
