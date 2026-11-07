@@ -95,7 +95,7 @@ function CodeForm({ submitLabel }: { submitLabel: string }) {
 
 export function TotpVerifyPage() {
   return (
-    <Shell title="Код из приложения" subtitle="6 цифр из Google Authenticator">
+    <Shell title="Код проверки" subtitle="6 цифр из «Паролей» Apple">
       <CodeForm submitLabel="Подтвердить" />
     </Shell>
   );
@@ -118,24 +118,24 @@ export function TotpSetupPage() {
   }, [uri]);
 
   return (
-    <Shell title="Защита входа" subtitle="Подключите код из Google Authenticator">
+    <Shell title="Защита входа" subtitle="Подключите код проверки в «Паролях» Apple">
       {setup.isPending ? <div className="mx-auto size-60 animate-pulse rounded-xl bg-slate-200 dark:bg-white/10" /> : null}
       <ErrorText text={setup.error?.message ?? null} />
       {setup.data ? (
         <>
           <ol className="mb-4 list-decimal space-y-1 pl-5 text-sm">
             <li>
-              <b>На телефоне:</b> нажмите кнопку ниже — откроется приложение для кодов.
+              <b>На iPhone:</b> нажмите кнопку ниже → выберите «Пароли» → запись PostFixer (или новую).
             </li>
             <li>
-              <b>С компьютера:</b> в Google Authenticator нажмите «+» → «Сканировать QR-код».
+              <b>На Mac:</b> откройте «Пароли» → запись PostFixer → «Изменить» → «Настроить код проверки» → «Ввести ключ настройки» и вставьте ключ ниже (или отсканируйте QR с iPhone).
             </li>
-            <li>Введите 6 цифр, которые покажет приложение.</li>
+            <li>Введите 6 цифр, которые покажут «Пароли». Дальше Safari будет подставлять код сам.</li>
           </ol>
           <a href={setup.data.uri} className="mb-4 block rounded-full border border-brand px-4 py-2.5 text-center font-semibold text-brand md:hidden">
-            Открыть в приложении
+            Добавить код в «Пароли»
           </a>
-          {qr ? <img src={qr} alt="QR-код для Google Authenticator" className="mx-auto mb-3 hidden size-60 rounded-xl bg-white p-2 md:block" /> : null}
+          {qr ? <img src={qr} alt="QR-код для кода проверки" className="mx-auto mb-3 hidden size-60 rounded-xl bg-white p-2 md:block" /> : null}
           <p className="mb-4 break-all text-center font-mono text-xs text-slate-500 dark:text-white/60">
             Ключ вручную: {setup.data.secret}
           </p>
