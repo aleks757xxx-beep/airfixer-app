@@ -1,6 +1,6 @@
-/** Работа с хранилищем R2: публичная раздача роликов для Buffer и очистка старых. */
+/** Работа с хранилищем R2: публичная раздача роликов для Buffer и уборка. */
 
-const KEEP_DAYS = 30;
+const ORPHAN_GRACE_MS = 24 * 3600 * 1000;
 
 function isBody(o: R2Object | R2ObjectBody): o is R2ObjectBody {
   return "body" in o;
@@ -41,17 +41,22 @@ export async function serveMedia(request: Request, bucket: R2Bucket, key: string
   return new Response(request.method === "HEAD" ? null : obj.body, { status, headers });
 }
 
-/** Удалить ролики старше KEEP_DAYS дней (cron раз в сутки). */
-export async function cleanupOldVideos(bucket: R2Bucket): Promise<number> {
-  const limit = Date.now() - KEEP_DAYS * 24 * 3600 * 1000;
+/**
+ * Уборка хранилища (cron раз в сутки): удалить файлы, которых нет в библиотеке
+ * (удалённые из библиотеки или «сироты» старше суток). Ролики из библиотеки не трогаем.
+ */
+export async function cleanupOrphans(bucket: R2Bucket, db: D1Database): Promise<number> {
+  const live = await db.prepare("SELECT r2_key FROM media WHERE deleted_at IS NULL").all<{ r2_key: string }>();
+  const keep = new Set(live.results.map((r) => r.r2_key));
+  const limit = Date.now() - ORPHAN_GRACE_MS;
   let cursor: string | undefined;
   let removed = 0;
   do {
     const list = await bucket.list({ prefix: "videos/", ...(cursor ? { cursor } : {}) });
-    const old = list.objects.filter((o) => o.uploaded.getTime() < limit).map((o) => o.key);
-    if (old.length) {
-      await bucket.delete(old);
-      removed += old.length;
+    const orphans = list.objects.filter((o) => !keep.has(o.key) && o.uploaded.getTime() < limit).map((o) => o.key);
+    if (orphans.length) {
+      await bucket.delete(orphans);
+      removed += orphans.length;
     }
     cursor = list.truncated ? list.cursor : undefined;
   } while (cursor);

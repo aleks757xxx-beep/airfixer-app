@@ -5,7 +5,8 @@ import { health } from "./routes/health";
 import { auth } from "./routes/auth";
 import { requireAuth } from "./middleware/auth";
 import { ensureMigrated } from "./lib/migrate";
-import { cleanupOldVideos, serveMedia } from "./services/storage";
+import { cleanupOrphans, serveMedia } from "./services/storage";
+import { ingest, media } from "./routes/media";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -17,11 +18,14 @@ const app = new Hono<AppBindings>();
 
 // API
 const api = new Hono<AppBindings>();
+// Автозагрузка с Mac — по токену, не из браузера (поэтому до проверки Origin)
+api.route("/ingest", ingest);
 api.use("*", sameOrigin);
 api.route("/auth", auth);
 // Всё остальное — только после входа (пароль + код)
 api.use("*", requireAuth);
 api.route("/health", health);
+api.route("/media", media);
 api.all("*", (c) => c.json({ error: "Не найдено" }, 404));
 api.onError((err, c) => {
   console.error("api error", err);
@@ -47,7 +51,8 @@ export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(ensureMigrated(env.DB));
-    const removed = await cleanupOldVideos(env.BUCKET);
-    console.log("cleanup: removed videos", removed);
+    await ensureMigrated(env.DB);
+    const removed = await cleanupOrphans(env.BUCKET, env.DB);
+    console.log("cleanup: removed orphan files", removed);
   },
 } satisfies ExportedHandler<Env>;

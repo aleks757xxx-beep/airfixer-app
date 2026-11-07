@@ -51,3 +51,32 @@ export const TotpSetupSchema = z.object({ secret: z.string(), uri: z.string() })
 export type TotpSetup = z.infer<typeof TotpSetupSchema>;
 
 export const OkSchema = z.object({ ok: z.literal(true) });
+
+// ---------- Библиотека роликов ----------
+export const MediaSourceSchema = z.enum(["upload", "gotovoe"]);
+export type MediaSource = z.infer<typeof MediaSourceSchema>;
+
+export const MediaItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  size: z.number().int(),
+  mime: z.string().nullable(),
+  source: MediaSourceSchema,
+  createdAt: z.number().int(),
+  url: z.string(),
+});
+export type MediaItem = z.infer<typeof MediaItemSchema>;
+
+export const MediaListSchema = z.object({
+  items: z.array(MediaItemSchema),
+  totalBytes: z.number().int(),
+  limitBytes: z.number().int(),
+});
+export type MediaList = z.infer<typeof MediaListSchema>;
+
+export const UploadResultSchema = z.object({ item: MediaItemSchema, duplicate: z.boolean() });
+export type UploadResult = z.infer<typeof UploadResultSchema>;
+
+/** Ограничения загрузки (бесплатный Cloudflare принимает до 100 МБ за запрос). */
+export const MAX_UPLOAD_BYTES = 95 * 1024 * 1024;
+export const ALLOWED_VIDEO_EXT = ["mp4", "mov", "m4v"] as const;
