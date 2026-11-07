@@ -13,6 +13,12 @@ export const HealthSchema = z.object({
   version: z.string(),
   db: z.object({ ok: z.boolean(), migration: z.number().int() }),
   storage: z.object({ ok: z.boolean() }),
+  buffer: z.object({
+    ok: z.boolean(),
+    organizations: z.number().int(),
+    mutations: z.array(z.string()),
+    error: z.string().optional(),
+  }),
   secrets: z.object({
     appPassword: z.boolean(),
     bufferApiKey: z.boolean(),

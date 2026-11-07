@@ -30,6 +30,7 @@ export function StatusPage() {
   const rows: ReadonlyArray<{ ok: boolean; label: string }> = [
     { ok: h.db.ok, label: `База данных (схема v${h.db.migration})` },
     { ok: h.storage.ok, label: "Хранилище видео" },
+    { ok: h.buffer.ok, label: h.buffer.ok ? "Связь с Buffer" : `Связь с Buffer: ${h.buffer.error ?? "нет"}` },
     { ok: h.secrets.appPassword, label: "Секрет APP_PASSWORD" },
     { ok: h.secrets.bufferApiKey, label: "Секрет BUFFER_API_KEY" },
     { ok: h.secrets.uploadToken, label: "Секрет UPLOAD_TOKEN" },
