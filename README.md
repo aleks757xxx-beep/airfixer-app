@@ -1,4 +1,4 @@
-# AirFixer — приложение для постинга
+# PostFixer — приложение для постинга AirFixer
 
 Cloudflare Worker: загрузка роликов в R2 (`airfixer-video`) и планирование постов в Buffer (Facebook, Instagram, TikTok, YouTube).
 

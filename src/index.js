@@ -1,4 +1,4 @@
-// AirFixer — приложение для постинга (Cloudflare Worker)
+// PostFixer — приложение для постинга AirFixer (Cloudflare Worker)
 // Нужно в настройках Worker:
 //   R2 binding:  BUCKET  -> airfixer-video
 //   Secret:      BUFFER_API_KEY  (ключ из Buffer → Settings → API)
@@ -108,14 +108,14 @@ function redirect(to, cookie) {
 
 function loginPage(err) {
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AirFixer — вход</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<title>PostFixer — вход</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 <style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#2D2C38;color:#fff;font-family:Inter,Helvetica,Arial,sans-serif;padding:16px}
 form{width:100%;max-width:360px;background:#1f1e29;border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:28px}
 h1{margin:0 0 6px;font-size:26px;font-weight:800}p{margin:0 0 20px;color:#6E8BFF;font-weight:600}
 input{width:100%;box-sizing:border-box;background:#10121A;border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:12px;padding:14px;font:16px Inter,sans-serif;margin-bottom:14px}
 button{width:100%;border:0;border-radius:999px;padding:15px;font:700 17px Inter,sans-serif;color:#fff;background:#2AABEE;cursor:pointer}
 .err{color:#ff7b7b;margin-bottom:12px;font-weight:600}</style></head><body>
-<form method="post" action="/login"><h1>🍁 AirFixer</h1><p>Постинг</p>
+<form method="post" action="/login"><h1>🍁 PostFixer</h1><p>Постинг для AirFixer</p>
 ${err ? `<div class="err">${err}</div>` : ""}
 <input type="password" name="password" placeholder="Пароль" autocomplete="current-password" autofocus required>
 <button type="submit">Войти</button></form></body></html>`;
@@ -295,7 +295,7 @@ const html = (t, status = 200) => new Response(t, { status, headers: { "content-
 // ---------- страница приложения ----------
 const PAGE = `<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AirFixer — Постинг</title>
+<title>PostFixer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#2D2C38;--dark:#10121A;--card:#1f1e29;--line:rgba(255,255,255,.12);--blue:#3763F4;--blueL:#6E8BFF;--tg:#2AABEE;--wa:#25D366;--text:#fff;--muted:rgba(255,255,255,.65)}
@@ -321,7 +321,7 @@ textarea{min-height:130px;resize:vertical}
 .it.sel{border-color:var(--blue)}.it video{width:100%;aspect-ratio:9/16;object-fit:cover;margin:0;border-radius:0;max-height:none;pointer-events:none}
 .it div{font-size:12px;padding:6px 8px;line-height:1.3;word-break:break-word}.res div{padding:6px 0}.ok{color:var(--wa)}.err{color:#ff7b7b}
 </style></head><body>
-<header>🍁 AirFixer <span>Постинг · <a href="/logout" style="color:inherit">выйти</a></span></header>
+<header>🍁 PostFixer <span><a href="/logout" style="color:inherit">выйти</a></span></header>
 <main>
 <h1>Новый пост</h1><div class="sub">Видео · Подпись · Время · Все соцсети</div>
 
