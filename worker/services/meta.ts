@@ -49,7 +49,6 @@ export const META_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
   "pages_manage_posts",
-  "pages_manage_engagement",
   "read_insights",
   "business_management",
   "instagram_basic",
@@ -58,9 +57,11 @@ export const META_SCOPES = [
   "instagram_manage_insights",
 ].join(",");
 
-/** Приложение Meta «PostFixer» (не секрет) и конфигурация входа «PostFixer publish» (10 прав). */
+/** Приложение Meta «PostFixer» (не секрет).
+ *  Конфигурация входа (config_id 3012047265809430) не используется: с ней Facebook отвечает
+ *  «Sorry, something went wrong» — право pages_manage_engagement тянет недоступное pages_read_user_content.
+ *  Поэтому права передаются напрямую списком META_SCOPES (без pages_manage_engagement). */
 export const META_APP_ID_DEFAULT = "2206384923628133";
-export const META_CONFIG_ID_DEFAULT = "3012047265809430";
 
 /** Вход через Facebook для компаний: права задаются конфигурацией (config_id). */
 export function metaLoginUrl(appId: string, redirectUri: string, state: string, configId?: string): string {

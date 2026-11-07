@@ -4,7 +4,7 @@ import type { AppBindings } from "../env";
 import { audit } from "../middleware/auth";
 import { randomToken } from "../lib/crypto";
 import { BufferError } from "../services/buffer";
-import { META_APP_ID_DEFAULT, META_CONFIG_ID_DEFAULT, MetaError, exchangeCode, listPages, metaLoginUrl } from "../services/meta";
+import { META_APP_ID_DEFAULT, MetaError, exchangeCode, listPages, metaLoginUrl } from "../services/meta";
 import { accountToChannel, disconnectAccount, listAccounts, saveMetaAccounts, setSlots } from "../services/direct";
 import { listChannels } from "../services/publish";
 import { migrated } from "./media";
@@ -33,7 +33,7 @@ export const connect = new Hono<AppBindings>()
     const state = randomToken(24);
     await c.env.DB.prepare("DELETE FROM oauth_states WHERE created_at < ?").bind(Date.now() - STATE_TTL_MS).run();
     await c.env.DB.prepare("INSERT INTO oauth_states (state, provider, created_at) VALUES (?, 'meta', ?)").bind(state, Date.now()).run();
-    return c.redirect(metaLoginUrl(appId(c.env), redirectUri(c.req.url), state, META_CONFIG_ID_DEFAULT));
+    return c.redirect(metaLoginUrl(appId(c.env), redirectUri(c.req.url), state));
   })
   .delete("/accounts/:id", async (c) => {
     await disconnectAccount(c.env.DB, c.req.param("id"));
