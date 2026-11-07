@@ -16,6 +16,10 @@ function DirectConnections() {
   return (
     <div className="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
       <p className="font-semibold">Публикация напрямую (без Buffer)</p>
+      <p className="text-xs text-white/50">
+        Instagram и Facebook публикуются прямо из PostFixer, без Buffer. Кнопка ниже откроет вход в Facebook: отметьте страницу и оба Instagram — после
+        этого они появятся здесь списком. «Вместо Buffer» — этот канал больше не идёт через Buffer.
+      </p>
       {connected === "meta" ? (
         <p className="rounded-lg bg-wa/15 p-2 text-wa">
           ✓ Подключено: {params.get("n")} аккаунт(ов), из них Instagram: {params.get("ig")}
@@ -65,6 +69,10 @@ function BufferPlan() {
   return (
     <div className="mt-5 space-y-1.5 border-t border-white/10 pt-4 text-sm">
       <p className="font-semibold">Тариф Buffer</p>
+      <p className="text-xs text-white/50">
+        Сколько соцсетей разрешает ваш тариф Buffer. Заблокированные каналы Buffer публиковать не даёт. Когда Instagram и Facebook переедут напрямую, их
+        можно отключить в Buffer — блокировка уйдёт.
+      </p>
       <p className={over ? "text-amber-300" : ""}>
         Каналов: подключено {chans.length}, по тарифу можно {lim.data.channels}
         {over ? " — лишние Buffer блокирует" : ""}
@@ -95,7 +103,7 @@ function ClaudeLinkSetting() {
         Чат с Claude (кнопка «💬 Claude»)
       </label>
       <p className="text-sm text-white/55">
-        Если начнёте новый чат с Claude: откройте его, скопируйте адрес из строки браузера (или «Поделиться» → «Скопировать ссылку»)
+        Сюда ведёт кнопка «💬 Claude» вверху. Если начнёте новый чат с Claude: откройте его, скопируйте адрес из строки браузера (или «Поделиться» → «Скопировать ссылку»)
         и вставьте сюда.
       </p>
       <input
@@ -147,21 +155,26 @@ export function StatusPage() {
     );
   }
   const h = q.data;
-  const rows: ReadonlyArray<{ ok: boolean; label: string }> = [
-    { ok: h.db.ok, label: `База данных (схема v${h.db.migration})` },
-    { ok: h.storage.ok, label: "Хранилище видео" },
-    { ok: h.buffer.ok, label: h.buffer.ok ? "Связь с Buffer" : `Связь с Buffer: ${h.buffer.error ?? "нет"}` },
-    { ok: h.secrets.appPassword, label: "Секрет APP_PASSWORD" },
-    { ok: h.secrets.bufferApiKey, label: "Секрет BUFFER_API_KEY" },
-    { ok: h.secrets.uploadToken, label: "Секрет UPLOAD_TOKEN" },
+  const rows: ReadonlyArray<{ ok: boolean; label: string; hint: string }> = [
+    { ok: h.db.ok, label: `База данных (схема v${h.db.migration})`, hint: "где хранятся ролики, заказы, задания, посты" },
+    { ok: h.storage.ok, label: "Хранилище видео", hint: "сами файлы роликов (до 10 ГБ бесплатно)" },
+    { ok: h.buffer.ok, label: h.buffer.ok ? "Связь с Buffer" : `Связь с Buffer: ${h.buffer.error ?? "нет"}`, hint: "через него идут TikTok и Google" },
+    { ok: h.secrets.appPassword, label: "Пароль входа (APP_PASSWORD)", hint: "пароль для входа в PostFixer" },
+    { ok: h.secrets.bufferApiKey, label: "Ключ Buffer (BUFFER_API_KEY)", hint: "пропуск PostFixer в ваш Buffer" },
+    { ok: h.secrets.uploadToken, label: "Ключ автозагрузки (UPLOAD_TOKEN)", hint: "для Mac («Готовое» → библиотека) и для Claude" },
   ];
   return (
     <Card title={`Состояние · версия ${h.version}`}>
       <ul className="space-y-2">
         {rows.map((r) => (
-          <li key={r.label} className="flex items-center gap-2">
-            <StatusDot ok={r.ok} />
-            <span>{r.label}</span>
+          <li key={r.label} className="flex items-start gap-2">
+            <span className="mt-1.5">
+              <StatusDot ok={r.ok} />
+            </span>
+            <span>
+              {r.label}
+              <span className="block text-xs text-white/45">{r.hint}</span>
+            </span>
             <span className="ml-auto text-sm text-slate-500 dark:text-white/60">{r.ok ? "в порядке" : "нет"}</span>
           </li>
         ))}
@@ -170,6 +183,7 @@ export function StatusPage() {
       <BufferPlan />
       <ClaudeLinkSetting />
       <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">
+        <p className="mb-1 text-xs text-white/45">Если потеряли телефон или вошли с чужого устройства — выйдет со всех устройств, войти можно заново.</p>
         <button
           type="button"
           disabled={logoutAll.isPending}
