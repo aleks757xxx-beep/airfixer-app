@@ -333,6 +333,7 @@ export const BufferLimitsSchema = z.object({
   channels: z.number().int(),
   scheduledNow: z.number().int(),
   daily: z.array(z.object({ channelId: z.string(), limit: z.number().int().nullable(), scheduled: z.number().int(), sent: z.number().int(), isAtLimit: z.boolean() })),
+  connected: z.array(z.object({ name: z.string(), service: z.string(), isLocked: z.boolean() })).optional(),
 });
 export type BufferLimits = z.infer<typeof BufferLimitsSchema>;
 

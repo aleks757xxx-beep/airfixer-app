@@ -20,6 +20,7 @@ const Reply = z.object({ ok: z.boolean(), result: z.unknown().optional(), descri
 /** Понятные сообщения вместо английских ошибок Telegram. */
 function explain(d: string): string {
   if (/chat not found/i.test(d)) return "Telegram: канал не найден — проверьте адрес и что бот добавлен в канал";
+  if (/member list is inaccessible/i.test(d)) return "Telegram: бот ещё не админ этого канала — добавьте его в администраторы канала и нажмите ещё раз";
   if (/not enough rights|need administrator|have no rights/i.test(d)) return "Telegram: у бота нет права публиковать — сделайте его админом канала с правом «Публикация сообщений»";
   if (/too big|entity too large/i.test(d)) return "Telegram: ролик больше 50 МБ";
   if (/unauthorized/i.test(d)) return "Telegram: неверный ключ бота (TG_BOT_TOKEN)";

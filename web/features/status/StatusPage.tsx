@@ -166,10 +166,9 @@ function TelegramButtonSetting() {
 /** Тариф Buffer: сколько каналов разрешено, заблокированные каналы, запланированные посты. */
 function BufferPlan() {
   const lim = useBufferLimits();
-  const ch = useChannels();
-  if (lim.isPending || ch.isPending) return <p className="mt-5 border-t border-white/10 pt-4 text-sm text-white/50">Тариф Buffer: загружаю…</p>;
+  if (lim.isPending) return <p className="mt-5 border-t border-white/10 pt-4 text-sm text-white/50">Тариф Buffer: загружаю…</p>;
   if (lim.isError) return <p className="mt-5 border-t border-white/10 pt-4 text-sm text-red-400">Тариф Buffer: {lim.error.message}</p>;
-  const chans = (ch.data?.items ?? []).filter((c) => !/^(ig|fb|yt|tg|th):/.test(c.id));
+  const chans = lim.data.connected ?? [];
   const locked = chans.filter((c) => c.isLocked);
   const over = chans.length > lim.data.channels;
   return (
@@ -183,7 +182,8 @@ function BufferPlan() {
         Каналов: подключено {chans.length}, по тарифу можно {lim.data.channels}
         {over ? " — лишние Buffer блокирует" : ""}
       </p>
-      {locked.length > 0 ? <p className="text-amber-300">🔒 Заблокированы: {locked.map((c) => c.displayName || c.name).join(", ")}</p> : null}
+      <p className="text-xs text-white/50">В Buffer: {chans.map((c) => `${c.name} (${c.service})`).join(", ")}</p>
+      {locked.length > 0 ? <p className="text-amber-300">🔒 Заблокированы: {locked.map((c) => c.name).join(", ")}</p> : null}
       <p>
         Запланировано постов: {lim.data.scheduledNow} из {lim.data.scheduledPosts}
       </p>

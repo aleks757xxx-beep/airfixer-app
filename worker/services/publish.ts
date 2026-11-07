@@ -554,5 +554,7 @@ export async function bufferLimits(apiKey: string, db: D1Database): Promise<Buff
     channels: o?.limits.channels ?? 0,
     scheduledNow: scheduled.length,
     daily: d.dailyPostingLimits,
+    // все каналы в Buffer, включая переехавшие напрямую — они всё равно занимают место в тарифе
+    connected: channels.map((c) => ({ name: c.displayName || c.name, service: c.service, isLocked: c.isLocked })),
   };
 }
