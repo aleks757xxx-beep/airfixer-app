@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppBindings } from "../env";
 import { audit } from "../middleware/auth";
@@ -21,7 +21,8 @@ import { migrated } from "./media";
 
 const STATE_TTL_MS = 10 * 60_000;
 const redirectUri = (url: string) => `https://${new URL(url).host}/api/v2/connect/meta/callback`;
-const igRedirectUri = (url: string) => `https://${new URL(url).host}/api/v2/connect/instagram/callback`;
+/** Единый вход возвращается на тот же зарегистрированный адрес, что и вход Facebook; различаем по state. */
+const igRedirectUri = redirectUri;
 const igConfigId = (env: { META_IG_CONFIG_ID?: string }) => env.META_IG_CONFIG_ID?.trim() || META_IG_CONFIG_ID_DEFAULT;
 const igConfigured = (env: { META_IG_CONFIG_ID?: string; META_APP_SECRET?: string; TOKEN_KEY?: string }) =>
   !!(igConfigId(env) && env.META_APP_SECRET && env.TOKEN_KEY);
@@ -95,13 +96,9 @@ export const connect = new Hono<AppBindings>()
  */
 export const connectCallback = new Hono<AppBindings>().use("*", migrated);
 
-connectCallback.get("/instagram/callback", async (c) => {
+async function instagramCallback(c: Context<AppBindings>): Promise<Response> {
   const back = (q: string) => c.redirect(`/#/status?${q}`);
-  const state = c.req.query("state") ?? "";
   const code = c.req.query("code");
-  const row = await c.env.DB.prepare("SELECT created_at FROM oauth_states WHERE state = ? AND provider = 'instagram'").bind(state).first<{ created_at: number }>();
-  await c.env.DB.prepare("DELETE FROM oauth_states WHERE state = ?").bind(state).run();
-  if (!row || Date.now() - row.created_at > STATE_TTL_MS) return back("connect_error=" + encodeURIComponent("Ссылка входа устарела — нажмите «Подключить» ещё раз"));
   if (!code) return back("connect_error=" + encodeURIComponent(c.req.query("error_description") ?? "Вход в Instagram отменён"));
   if (!igConfigured(c.env)) return back("connect_error=" + encodeURIComponent("Единый вход Instagram ещё не настроен"));
   try {
@@ -118,15 +115,16 @@ connectCallback.get("/instagram/callback", async (c) => {
     const msg = e instanceof MetaError || e instanceof BufferError ? e.message : "Ошибка подключения";
     return back("connect_error=" + encodeURIComponent(msg));
   }
-});
+}
 
 connectCallback.get("/meta/callback", async (c) => {
   const back = (q: string) => c.redirect(`/#/status?${q}`);
   const state = c.req.query("state") ?? "";
   const code = c.req.query("code");
-  const row = await c.env.DB.prepare("SELECT created_at FROM oauth_states WHERE state = ? AND provider = 'meta'").bind(state).first<{ created_at: number }>();
+  const row = await c.env.DB.prepare("SELECT created_at, provider FROM oauth_states WHERE state = ?").bind(state).first<{ created_at: number; provider: string }>();
   await c.env.DB.prepare("DELETE FROM oauth_states WHERE state = ?").bind(state).run();
   if (!row || Date.now() - row.created_at > STATE_TTL_MS) return back("connect_error=" + encodeURIComponent("Ссылка входа устарела — нажмите «Подключить» ещё раз"));
+  if (row.provider === "instagram") return instagramCallback(c);
   if (!code) return back("connect_error=" + encodeURIComponent(c.req.query("error_description") ?? "Вход в Facebook отменён"));
   if (!c.env.META_APP_SECRET) return back("connect_error=" + encodeURIComponent("Не задан META_APP_SECRET"));
   try {
