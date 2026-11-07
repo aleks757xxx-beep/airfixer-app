@@ -7,9 +7,12 @@ import { ensureMigrated } from "../lib/migrate";
 
 export const SESSION_COOKIE = "pf_session";
 export const DEVICE_COOKIE = "pf_device";
-export const SESSION_DAYS = 30;
-export const DEVICE_DAYS = 30;
-const DAY = 24 * 3600 * 1000;
+/**
+ * Решение владельца 07.11.2026: вход без срока — до нажатия «Выйти» (или «Выйти на всех устройствах»).
+ * Браузеры не хранят cookie дольше 400 дней, поэтому при каждом заходе срок cookie продлевается.
+ */
+const NO_EXPIRY_MS = 100 * 365 * 24 * 3600 * 1000;
+const COOKIE_MAX_AGE_SEC = 400 * 86400;
 
 export interface SessionRow {
   id: string;
@@ -29,6 +32,10 @@ export async function getSession(c: Context<AppBindings>): Promise<SessionRow | 
     .bind(await sha256Hex(token))
     .first<SessionRow>();
   if (!row || row.expires_at < Date.now()) return null;
+  // продлить cookie (и устройства), чтобы вход не слетал
+  setCookie(c, SESSION_COOKIE, token, cookieOpts(COOKIE_MAX_AGE_SEC));
+  const device = getCookie(c, DEVICE_COOKIE);
+  if (device) setCookie(c, DEVICE_COOKIE, device, cookieOpts(COOKIE_MAX_AGE_SEC));
   return row;
 }
 
@@ -38,9 +45,9 @@ export async function createSession(c: Context<AppBindings>, mfaOk: boolean): Pr
   await c.env.DB.prepare(
     "INSERT INTO sessions (id, created_at, expires_at, mfa_ok, user_agent, last_seen) VALUES (?, ?, ?, ?, ?, ?)",
   )
-    .bind(await sha256Hex(token), now, now + SESSION_DAYS * DAY, mfaOk ? 1 : 0, (c.req.header("User-Agent") ?? "").slice(0, 200), now)
+    .bind(await sha256Hex(token), now, now + NO_EXPIRY_MS, mfaOk ? 1 : 0, (c.req.header("User-Agent") ?? "").slice(0, 200), now)
     .run();
-  setCookie(c, SESSION_COOKIE, token, cookieOpts(SESSION_DAYS * 86400));
+  setCookie(c, SESSION_COOKIE, token, cookieOpts(COOKIE_MAX_AGE_SEC));
 }
 
 export async function destroySession(c: Context<AppBindings>): Promise<void> {
@@ -49,7 +56,7 @@ export async function destroySession(c: Context<AppBindings>): Promise<void> {
   deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true });
 }
 
-/** Устройство, на котором код уже вводили (30 дней) — там код не спрашиваем. */
+/** Устройство, на котором код уже вводили — там код больше не спрашиваем. */
 export async function isTrustedDevice(c: Context<AppBindings>): Promise<boolean> {
   const token = getCookie(c, DEVICE_COOKIE);
   if (!token) return false;
@@ -63,9 +70,9 @@ export async function trustDevice(c: Context<AppBindings>): Promise<void> {
   const token = randomToken();
   const now = Date.now();
   await c.env.DB.prepare("INSERT INTO trusted_devices (id, created_at, expires_at, user_agent) VALUES (?, ?, ?, ?)")
-    .bind(await sha256Hex(token), now, now + DEVICE_DAYS * DAY, (c.req.header("User-Agent") ?? "").slice(0, 200))
+    .bind(await sha256Hex(token), now, now + NO_EXPIRY_MS, (c.req.header("User-Agent") ?? "").slice(0, 200))
     .run();
-  setCookie(c, DEVICE_COOKIE, token, cookieOpts(DEVICE_DAYS * 86400));
+  setCookie(c, DEVICE_COOKIE, token, cookieOpts(COOKIE_MAX_AGE_SEC));
 }
 
 export async function totpConfigured(db: D1Database): Promise<boolean> {

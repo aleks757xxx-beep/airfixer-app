@@ -84,7 +84,7 @@ function CodeForm({ submitLabel }: { submitLabel: string }) {
       />
       <label className="mt-3 flex items-center gap-2 text-sm">
         <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} className="size-4" />
-        Запомнить это устройство на 30 дней
+        Запомнить это устройство
       </label>
       <button className={btnCls} type="submit" disabled={verify.isPending || code.length !== 6}>
         {verify.isPending ? "Проверяю…" : submitLabel}
