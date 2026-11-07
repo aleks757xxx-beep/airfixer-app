@@ -19,7 +19,12 @@ const SHOW: ReadonlyArray<{ type: string; label: string }> = [
   { type: "shares", label: "Репосты" },
   { type: "saves", label: "Сохранения" },
 ];
-const metric = (p: StatPost, type: string) => p.metrics.find((m) => m.type === type)?.value ?? 0;
+/** Лайки у YouTube/TikTok Buffer отдаёт как reactions. */
+const metric = (p: StatPost, type: string) => {
+  const get = (t: string) => p.metrics.find((m) => m.type === t)?.value;
+  return (type === "likes" ? (get("likes") ?? get("reactions")) : get(type)) ?? 0;
+};
+const has = (p: StatPost, type: string) => p.metrics.some((m) => m.type === type || (type === "likes" && m.type === "reactions"));
 const views = (p: StatPost) => metric(p, "views") || metric(p, "impressions") || metric(p, "reach");
 const fmt = (n: number) => (n >= 10_000 ? `${(n / 1000).toFixed(0)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
 
@@ -151,11 +156,18 @@ export function StatsPage() {
                       {p.metrics.length === 0 ? (
                         <span className="text-white/40">цифр пока нет</span>
                       ) : (
-                        SHOW.filter((s) => p.metrics.some((m) => m.type === s.type)).map((s) => (
-                          <span key={s.type}>
-                            {s.label}: <b className="text-white">{fmt(metric(p, s.type))}</b>
-                          </span>
-                        ))
+                        <>
+                          {SHOW.filter((s) => has(p, s.type)).map((s) => (
+                            <span key={s.type}>
+                              {s.label}: <b className="text-white">{fmt(metric(p, s.type))}</b>
+                            </span>
+                          ))}
+                          {has(p, "averageTimeWatched") ? (
+                            <span>
+                              Досмотр: <b className="text-white">{metric(p, "averageTimeWatched").toFixed(1)} с</b>
+                            </span>
+                          ) : null}
+                        </>
                       )}
                     </div>
                   </div>

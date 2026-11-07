@@ -234,7 +234,10 @@ export function CalendarPage() {
                   <label key={c.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/5">
                     <input type="checkbox" checked={on} onChange={() => setHidden(on ? [...hidden, c.id] : hidden.filter((x) => x !== c.id))} />
                     <ServiceSquare service={c.service} />
-                    <span className="text-sm">{channelLabel(c)}</span>
+                    <span className="text-sm">
+                      {channelLabel(c)}
+                      {c.isLocked ? " 🔒" : ""}
+                    </span>
                   </label>
                 );
               })}

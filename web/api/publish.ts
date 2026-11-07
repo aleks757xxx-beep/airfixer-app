@@ -8,6 +8,8 @@ import {
   SnippetListSchema,
   SnippetResultSchema,
   StatsSchema,
+  BufferLimitsSchema,
+  type BufferLimits,
   type SnippetInput,
   type SnippetList,
   type Stats,
@@ -125,4 +127,8 @@ export function useDeleteSnippet() {
     },
     onSettled: () => qc.invalidateQueries({ queryKey: snippetsKey }),
   });
+}
+
+export function useBufferLimits() {
+  return useQuery<BufferLimits>({ queryKey: ["buffer-limits"], queryFn: () => apiGet("/publish/limits", BufferLimitsSchema), staleTime: 10 * 60_000, retry: false });
 }

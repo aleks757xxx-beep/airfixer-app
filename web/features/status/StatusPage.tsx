@@ -3,6 +3,31 @@ import { Card, Skeleton, StatusDot } from "../../components/ui/Card";
 import { useLogout } from "../../api/auth";
 import { useState } from "react";
 import { useSaveSettings, useSettings } from "../../api/settings";
+import { useBufferLimits, useChannels } from "../../api/publish";
+
+/** Тариф Buffer: сколько каналов разрешено, заблокированные каналы, запланированные посты. */
+function BufferPlan() {
+  const lim = useBufferLimits();
+  const ch = useChannels();
+  if (lim.isPending || ch.isPending) return <p className="mt-5 border-t border-white/10 pt-4 text-sm text-white/50">Тариф Buffer: загружаю…</p>;
+  if (lim.isError) return <p className="mt-5 border-t border-white/10 pt-4 text-sm text-red-400">Тариф Buffer: {lim.error.message}</p>;
+  const chans = ch.data?.items ?? [];
+  const locked = chans.filter((c) => c.isLocked);
+  const over = chans.length > lim.data.channels;
+  return (
+    <div className="mt-5 space-y-1.5 border-t border-white/10 pt-4 text-sm">
+      <p className="font-semibold">Тариф Buffer</p>
+      <p className={over ? "text-amber-300" : ""}>
+        Каналов: подключено {chans.length}, по тарифу можно {lim.data.channels}
+        {over ? " — лишние Buffer блокирует" : ""}
+      </p>
+      {locked.length > 0 ? <p className="text-amber-300">🔒 Заблокированы: {locked.map((c) => c.displayName || c.name).join(", ")}</p> : null}
+      <p>
+        Запланировано постов: {lim.data.scheduledNow} из {lim.data.scheduledPosts}
+      </p>
+    </div>
+  );
+}
 
 /** Ссылка на чат с Claude, который открывает кнопка «💬 Claude». */
 function ClaudeLinkSetting() {
@@ -93,6 +118,7 @@ export function StatusPage() {
           </li>
         ))}
       </ul>
+      <BufferPlan />
       <ClaudeLinkSetting />
       <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">
         <button

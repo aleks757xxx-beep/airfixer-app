@@ -39,14 +39,15 @@ const RawChannel = z.object({
   timezone: z.string(),
   isQueuePaused: z.boolean(),
   isDisconnected: z.boolean(),
+  isLocked: z.boolean(),
   postingSchedule: z.array(z.object({ day: z.string(), times: z.array(z.string()), paused: z.boolean() })),
 });
 
 let channelsCache: { at: number; items: Channel[] } | null = null;
 export async function listChannels(apiKey: string, db: D1Database, fresh = false): Promise<Channel[]> {
   if (!fresh && channelsCache && Date.now() - channelsCache.at < 5 * 60_000) return channelsCache.items;
-  if (fresh) await db.prepare("DELETE FROM buffer_cache WHERE key = 'channels'").run();
-  const items = await cached(db, "channels", 10 * 60_000, () => loadChannels(apiKey));
+  if (fresh) await db.prepare("DELETE FROM buffer_cache WHERE key LIKE 'channels%'").run();
+  const items = await cached(db, "channels:v2", 10 * 60_000, () => loadChannels(apiKey));
   channelsCache = { at: Date.now(), items };
   return items;
 }
@@ -55,7 +56,7 @@ async function loadChannels(apiKey: string): Promise<Channel[]> {
   const d = await bufferQuery(
     apiKey,
     `query($org: OrganizationId!) { channels(input: { organizationId: $org }) {
-      id name displayName service avatar timezone isQueuePaused isDisconnected postingSchedule { day times paused } } }`,
+      id name displayName service avatar timezone isQueuePaused isDisconnected isLocked postingSchedule { day times paused } } }`,
     z.object({ channels: z.array(RawChannel) }),
     { org },
   );
@@ -68,6 +69,7 @@ async function loadChannels(apiKey: string): Promise<Channel[]> {
     timezone: c.timezone,
     isQueuePaused: c.isQueuePaused,
     isDisconnected: c.isDisconnected,
+    isLocked: c.isLocked,
     schedule: c.postingSchedule,
   }));
   return items;

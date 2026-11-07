@@ -208,6 +208,8 @@ export const ChannelSchema = z.object({
   timezone: z.string(),
   isQueuePaused: z.boolean(),
   isDisconnected: z.boolean(),
+  /** Заблокирован тарифом Buffer (каналов больше, чем разрешено) */
+  isLocked: z.boolean(),
   schedule: z.array(ScheduleDaySchema),
 });
 export type Channel = z.infer<typeof ChannelSchema>;

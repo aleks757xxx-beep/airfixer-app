@@ -57,7 +57,8 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
   const [time, setTime] = useState("19:00");
   const [result, setResult] = useState<ComposeResult | null>(null);
 
-  const all = useMemo(() => (channels.data?.items ?? []).filter((c) => !c.isDisconnected), [channels.data]);
+  const all = useMemo(() => (channels.data?.items ?? []).filter((c) => !c.isDisconnected && !c.isLocked), [channels.data]);
+  const locked = (channels.data?.items ?? []).filter((c) => c.isLocked);
   const chosen = selected ?? all.map((c) => c.id);
   const chosenChannels = all.filter((c) => chosen.includes(c.id));
   const current = library.data?.items.find((m) => m.id === mediaId) ?? media;
@@ -208,6 +209,11 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                 <p className="text-sm font-semibold">Куда</p>
                 {channels.isPending ? <p className="text-sm text-white/50">Загружаю каналы Buffer…</p> : null}
                 {channels.isError ? <p className="text-sm text-red-400">{channels.error.message}</p> : null}
+                {locked.length > 0 ? (
+                  <p className="text-xs text-amber-300">
+                    🔒 Заблокированы тарифом Buffer: {locked.map((c) => channelLabel(c)).join(", ")} — в Buffer разрешено меньше каналов, чем подключено.
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {all.map((c) => {
                     const on = chosen.includes(c.id);
