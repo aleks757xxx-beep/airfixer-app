@@ -3,7 +3,7 @@ import { Card, Skeleton, StatusDot } from "../../components/ui/Card";
 import { useLogout } from "../../api/auth";
 import { useState } from "react";
 import { useSaveSettings, useSettings } from "../../api/settings";
-import { useBufferLimits, useChannels, useDirectAccounts, useDisconnect } from "../../api/publish";
+import { useBufferLimits, useChannels, useConnectTelegram, useDirectAccounts, useDisconnect } from "../../api/publish";
 import { ServiceSquare } from "../publish/PostCard";
 
 /** Соцсети напрямую (без Buffer): подключить Instagram и Facebook, список, отключить. */
@@ -51,8 +51,57 @@ function DirectConnections() {
         href="/api/v2/connect/meta/start"
         className={`inline-block rounded-full px-4 py-2 font-bold text-white ${q.data?.meta.configured ? "bg-[#1877f2]" : "pointer-events-none bg-white/10 text-white/40"}`}
       >
-        {(q.data?.items.length ?? 0) > 0 ? "Переподключить Instagram и Facebook" : "Подключить Instagram и Facebook"}
+        {(q.data?.items ?? []).some((a) => a.service === "instagram" || a.service === "facebook") ? "Переподключить Instagram и Facebook" : "Подключить Instagram и Facebook"}
       </a>
+    </div>
+  );
+}
+
+/** Telegram-канал: бот публикует ролики в канал. */
+function TelegramConnect() {
+  const q = useDirectAccounts();
+  const conn = useConnectTelegram();
+  const [address, setAddress] = useState("");
+  const configured = q.data?.telegram?.configured ?? false;
+  const channels = (q.data?.items ?? []).filter((a) => a.service === "telegram");
+  return (
+    <div className="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
+      <p className="font-semibold">Telegram-канал</p>
+      <p className="text-xs text-white/50">
+        Ролики уходят в ваш канал через бота. Бот принимает видео до 50 МБ: для больших роликов Claude при монтаже кладёт в «Готовое» лёгкую копию
+        «имя.tg.mp4» — PostFixer возьмёт её сам. Подключённые каналы видны выше в списке «Публикация напрямую».
+      </p>
+      {!configured ? (
+        <p className="text-amber-300">
+          Нужен ключ бота: создайте бота у @BotFather в Telegram и добавьте ключ в Cloudflare как секрет TG_BOT_TOKEN.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-white/50">
+            Сделайте бота админом канала (право «Публикация сообщений»), затем нажмите кнопку. Если канал не найдётся — впишите его адрес, например @airfixer.
+          </p>
+          <form
+            className="flex flex-wrap gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              conn.mutate(address.trim(), { onSuccess: () => setAddress("") });
+            }}
+          >
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="@адрес канала (можно пусто)"
+              aria-label="Адрес канала Telegram"
+              className="min-w-0 flex-1 rounded-lg border border-white/15 bg-ink-deep p-2 text-sm text-white focus:border-brand focus:outline-none"
+            />
+            <button type="submit" disabled={conn.isPending} className="rounded-full bg-[#229ed9] px-4 py-2 font-bold text-white disabled:opacity-50">
+              {conn.isPending ? "Ищу…" : channels.length ? "Подключить ещё канал" : "Подключить Telegram"}
+            </button>
+          </form>
+        </>
+      )}
+      {conn.isError ? <p className="rounded-lg bg-red-500/15 p-2 text-red-300">⚠️ {conn.error.message}</p> : null}
+      {conn.isSuccess ? <p className="rounded-lg bg-wa/15 p-2 text-wa">✓ Подключено: {conn.data.join(", ")}</p> : null}
     </div>
   );
 }
@@ -63,7 +112,7 @@ function BufferPlan() {
   const ch = useChannels();
   if (lim.isPending || ch.isPending) return <p className="mt-5 border-t border-white/10 pt-4 text-sm text-white/50">Тариф Buffer: загружаю…</p>;
   if (lim.isError) return <p className="mt-5 border-t border-white/10 pt-4 text-sm text-red-400">Тариф Buffer: {lim.error.message}</p>;
-  const chans = (ch.data?.items ?? []).filter((c) => !/^(ig|fb|yt):/.test(c.id));
+  const chans = (ch.data?.items ?? []).filter((c) => !/^(ig|fb|yt|tg|th):/.test(c.id));
   const locked = chans.filter((c) => c.isLocked);
   const over = chans.length > lim.data.channels;
   return (
@@ -180,6 +229,7 @@ export function StatusPage() {
         ))}
       </ul>
       <DirectConnections />
+      <TelegramConnect />
       <BufferPlan />
       <ClaudeLinkSetting />
       <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">

@@ -35,6 +35,7 @@ export interface MediaRow {
   note_status: NoteStatus | null;
   note_reply: string | null;
   note_at: number | null;
+  tg_size?: number | null;
 }
 interface UploadRow {
   id: string;
@@ -60,8 +61,14 @@ export const toItem = (r: MediaRow): MediaItem => ({
   noteStatus: r.note_status,
   noteReply: r.note_reply,
   noteAt: r.note_at,
+  tgSize: r.tg_size ?? null,
 });
-export const MEDIA_COLS = "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at";
+export const MEDIA_COLS =
+  "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at, (SELECT v.size FROM media_variants v WHERE v.media_id = media.id AND v.kind = 'tg') AS tg_size";
+
+/** «имя.tg.mp4» — лёгкая копия ролика «имя.mp4» для Telegram (до 50 МБ). */
+const TG_VARIANT = /\.tg\.(mp4|mov|m4v)$/i;
+const baseOf = (name: string) => (TG_VARIANT.test(name) ? name.replace(TG_VARIANT, "") : name.replace(/\.[a-z0-9]+$/i, "")).normalize("NFC").toLowerCase();
 
 function extOf(name: string): string | null {
   const m = /\.([a-z0-9]+)$/i.exec(name);
@@ -91,6 +98,15 @@ async function start(c: Ctx, source: MediaSource): Promise<Response> {
   if (dup) {
     const r: UploadStart = { duplicate: true, item: toItem(dup) };
     return c.json(r);
+  }
+  if (TG_VARIANT.test(name)) {
+    const v = await c.env.DB.prepare("SELECT r2_key, name, size, created_at FROM media_variants WHERE base = ? AND kind = 'tg' AND name = ? AND size = ?")
+      .bind(baseOf(name), name, size)
+      .first<{ r2_key: string; name: string; size: number; created_at: number }>();
+    if (v) {
+      const r: UploadStart = { duplicate: true, item: variantItem(v.r2_key, v.name, v.size, v.created_at) };
+      return c.json(r);
+    }
   }
 
   const id = crypto.randomUUID();
@@ -149,6 +165,7 @@ async function complete(c: Ctx, source: MediaSource): Promise<Response> {
     await c.env.BUCKET.delete(up.r2_key);
     return c.json({ error: "Размер файла не совпал — загрузите заново" }, 400);
   }
+  if (TG_VARIANT.test(up.name)) return completeVariant(c, up);
   const row: MediaRow = { id: up.id, r2_key: up.r2_key, name: up.name, size: up.size, mime: up.mime, source: up.source, created_at: Date.now(), note: null, note_status: null, note_reply: null, note_at: null };
   await c.env.DB.batch([
     c.env.DB.prepare("INSERT INTO media (id, r2_key, name, size, mime, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(
@@ -161,9 +178,36 @@ async function complete(c: Ctx, source: MediaSource): Promise<Response> {
       row.created_at,
     ),
     c.env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(up.id),
+    // лёгкая копия могла прийти раньше самого ролика
+    c.env.DB.prepare("UPDATE media_variants SET media_id = ? WHERE base = ? AND media_id IS NULL").bind(up.id, baseOf(up.name)),
   ]);
   await audit(c.env.DB, `media ${source}`, up.name);
   const r: UploadResult = { item: toItem(row), duplicate: false };
+  return c.json(r);
+}
+
+/** Ответ загрузчику для лёгкой копии (в библиотеке она отдельно не показывается). */
+function variantItem(key: string, name: string, size: number, at: number): MediaItem {
+  return { id: `tg:${key}`, name, size, mime: "video/mp4", source: "gotovoe", createdAt: at, url: `/media/${key}`, note: null, noteStatus: null, noteReply: null, noteAt: null, tgSize: size };
+}
+
+/** Лёгкая копия «имя.tg.mp4»: привязать к ролику «имя.*» (или подождать, пока он загрузится). */
+async function completeVariant(c: Ctx, up: UploadRow): Promise<Response> {
+  const base = baseOf(up.name);
+  const recent = await c.env.DB.prepare("SELECT id, name FROM media WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500").all<{ id: string; name: string }>();
+  const parent = recent.results.find((m) => !TG_VARIANT.test(m.name) && baseOf(m.name) === base);
+  const old = await c.env.DB.prepare("SELECT r2_key FROM media_variants WHERE base = ? AND kind = 'tg'").bind(base).first<{ r2_key: string }>();
+  if (old && old.r2_key !== up.r2_key) await c.env.BUCKET.delete(old.r2_key);
+  const now = Date.now();
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO media_variants (base, kind, media_id, r2_key, name, size, created_at) VALUES (?, 'tg', ?, ?, ?, ?, ?)
+       ON CONFLICT(base, kind) DO UPDATE SET media_id = excluded.media_id, r2_key = excluded.r2_key, name = excluded.name, size = excluded.size, created_at = excluded.created_at`,
+    ).bind(base, parent?.id ?? null, up.r2_key, up.name, up.size, now),
+    c.env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(up.id),
+  ]);
+  await audit(c.env.DB, "media tg copy", `${up.name}${parent ? "" : " (ролик ещё не загружен)"}`);
+  const r: UploadResult = { item: variantItem(up.r2_key, up.name, up.size, now), duplicate: false };
   return c.json(r);
 }
 
@@ -211,7 +255,12 @@ export const media = new Hono<AppBindings>()
       .first<{ r2_key: string; name: string }>();
     if (!row) return c.json({ error: "Ролик не найден" }, 404);
     await c.env.BUCKET.delete(row.r2_key);
-    await c.env.DB.prepare("UPDATE media SET deleted_at = ? WHERE id = ?").bind(Date.now(), id).run();
+    const variants = await c.env.DB.prepare("SELECT r2_key FROM media_variants WHERE media_id = ?").bind(id).all<{ r2_key: string }>();
+    for (const v of variants.results) await c.env.BUCKET.delete(v.r2_key);
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE media SET deleted_at = ? WHERE id = ?").bind(Date.now(), id),
+      c.env.DB.prepare("DELETE FROM media_variants WHERE media_id = ?").bind(id),
+    ]);
     await audit(c.env.DB, "media delete", row.name);
     return c.json({ ok: true as const });
   });

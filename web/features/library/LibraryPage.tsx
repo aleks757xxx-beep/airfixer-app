@@ -105,6 +105,7 @@ function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: ()
         </p>
         <p className="mt-1 text-xs text-white/55">
           {formatBytes(item.size)} · {formatDate(item.createdAt)} · {item.source === "gotovoe" ? "«Готовое»" : "загружено"}
+          {item.tgSize ? ` · копия для Telegram ${formatBytes(item.tgSize)}` : ""}
         </p>
         <button type="button" onClick={() => setComposing(true)} className="mt-2 w-full rounded-full bg-brand py-1.5 text-xs font-bold text-white">
           📅 Запланировать

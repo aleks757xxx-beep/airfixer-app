@@ -21,10 +21,12 @@ import {
 } from "../services/publish";
 import { migrated, uploadToken } from "./media";
 import { MetaError } from "../services/meta";
+import { TelegramError } from "../services/telegram";
 import {
   accountToChannel,
   createDirectPosts,
   deleteDirect,
+  disconnectAccount,
   isDirectChannel,
   isDirectPost,
   listAccounts,
@@ -43,7 +45,7 @@ function apiKey(c: Ctx): string | null {
 }
 const fail = (c: Ctx, e: unknown) => {
   console.error("publish", e);
-  const msg = e instanceof BufferError ? `Buffer: ${e.message}` : e instanceof MetaError ? e.message : "Ошибка связи с Buffer";
+  const msg = e instanceof BufferError ? `Buffer: ${e.message}` : e instanceof MetaError || e instanceof TelegramError ? e.message : "Ошибка связи с Buffer";
   return c.json({ error: msg }, 502);
 };
 const needKey: MiddlewareHandler<AppBindings> = async (c, next) => {
@@ -205,6 +207,13 @@ function build(author: "owner" | "claude") {
       } catch (e: unknown) {
         return fail(c, e);
       }
+    })
+    // Подключённые напрямую аккаунты (для Claude — посмотреть и отключить по просьбе владельца)
+    .get("/accounts", async (c) => c.json({ items: (await listAccounts(c.env.DB)).map((a) => ({ ...accountToChannel(a), replaces: a.replaces })) }))
+    .delete("/accounts/:id", async (c) => {
+      await disconnectAccount(c.env.DB, c.req.param("id"));
+      await audit(c.env.DB, `direct disconnect (${author})`, c.req.param("id"));
+      return c.json({ ok: true as const });
     })
     .delete("/posts/:id", async (c) => {
       try {

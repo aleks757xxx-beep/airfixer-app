@@ -76,6 +76,8 @@ export const MediaItemSchema = z.object({
   /** Ответ Claude на задание */
   noteReply: z.string().nullable(),
   noteAt: z.number().int().nullable(),
+  /** Размер лёгкой копии для Telegram («имя.tg.mp4»), если есть */
+  tgSize: z.number().int().nullable().optional(),
 });
 export type MediaItem = z.infer<typeof MediaItemSchema>;
 
@@ -289,7 +291,10 @@ export const TEXT_LIMITS: Readonly<Record<string, number>> = {
   youtube: 5000,
   facebook: 5000,
   googlebusiness: 1500,
+  telegram: 1024,
 };
+/** Боты Telegram принимают ролики до 50 МБ. */
+export const TG_MAX_BYTES = 50 * 1024 * 1024;
 /** Грузия без перехода на летнее время: UTC+4. */
 export const TBILISI_OFFSET_MS = 4 * 3600 * 1000;
 
@@ -323,5 +328,6 @@ export type BufferLimits = z.infer<typeof BufferLimitsSchema>;
 export const DirectAccountsSchema = z.object({
   items: z.array(ChannelSchema.extend({ replaces: z.string().nullable() })),
   meta: z.object({ configured: z.boolean() }),
+  telegram: z.object({ configured: z.boolean() }).optional(),
 });
 export type DirectAccounts = z.infer<typeof DirectAccountsSchema>;

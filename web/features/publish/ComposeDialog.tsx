@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { TEXT_LIMITS, type Channel, type ComposeInput, type ComposeResult, type GoogleButton, type MediaItem, type ShareMode } from "../../../shared/schemas";
+import { TEXT_LIMITS, TG_MAX_BYTES, type Channel, type ComposeInput, type ComposeResult, type GoogleButton, type MediaItem, type ShareMode } from "../../../shared/schemas";
 import { useMediaList } from "../../api/media";
 import { useChannels, useCompose, useSnippets } from "../../api/publish";
 import { SnippetsDialog } from "./SnippetsDialog";
@@ -77,6 +77,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
   const canSend =
     !!mediaId && chosenChannels.length > 0 && tooLong.length === 0 && !ytMissing && (mode !== "schedule" || (dueAt !== null && dueAt > Date.now()));
   const hasIg = chosenChannels.some((c) => c.service === "instagram");
+  const tgNoCopy = chosenChannels.some((c) => c.service === "telegram") && !!current && current.size > TG_MAX_BYTES && !current.tgSize;
   const hasFc = chosenChannels.some((c) => c.service === "instagram" || c.service === "facebook");
   const hasGoogle = chosenChannels.some((c) => c.service === "googlebusiness");
   const hasCover = chosenChannels.some((c) => c.service === "instagram" || c.service === "tiktok");
@@ -317,6 +318,12 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                 )}
                 {tooLong.length > 0 ? (
                   <p className="text-xs text-red-400">Слишком длинно для: {tooLong.map((c) => channelLabel(c)).join(", ")}</p>
+                ) : null}
+                {tgNoCopy ? (
+                  <p className="text-xs text-amber-300">
+                    Telegram: ролик больше 50 МБ, а лёгкой копии нет. Пост встанет в очередь, но выйдет, только когда Claude положит копию «имя.tg.mp4» в
+                    «Готовое».
+                  </p>
                 ) : null}
               </div>
 

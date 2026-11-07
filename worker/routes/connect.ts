@@ -5,7 +5,8 @@ import { audit } from "../middleware/auth";
 import { randomToken } from "../lib/crypto";
 import { BufferError } from "../services/buffer";
 import { META_APP_ID_DEFAULT, MetaError, exchangeCode, listPages, metaLoginUrl } from "../services/meta";
-import { accountToChannel, disconnectAccount, listAccounts, saveMetaAccounts, setSlots } from "../services/direct";
+import { accountToChannel, disconnectAccount, listAccounts, saveMetaAccounts, saveTelegramChannel, setSlots } from "../services/direct";
+import { TelegramError, chatByAddress, recentChannels } from "../services/telegram";
 import { listChannels } from "../services/publish";
 import { migrated } from "./media";
 
@@ -25,7 +26,26 @@ export const connect = new Hono<AppBindings>()
     return c.json({
       items: accounts.map((a) => ({ ...accountToChannel(a), replaces: a.replaces })),
       meta: { configured: !!(c.env.META_APP_SECRET && c.env.TOKEN_KEY) },
+      telegram: { configured: !!c.env.TG_BOT_TOKEN?.trim() },
     });
+  })
+  // Telegram: по адресу канала (@name) или найти каналы, куда бота недавно добавили админом
+  .post("/telegram", async (c) => {
+    const token = c.env.TG_BOT_TOKEN?.trim();
+    if (!token) return c.json({ error: "Не задан ключ бота TG_BOT_TOKEN в Cloudflare" }, 503);
+    const body = z.object({ address: z.string().max(200).optional() }).safeParse(await c.req.json().catch(() => ({})));
+    const address = body.success ? (body.data.address ?? "").trim() : "";
+    try {
+      const chats = address ? [await chatByAddress(token, address)] : await recentChannels(token);
+      if (chats.length === 0) {
+        return c.json({ error: "Бот не нашёл каналов. Добавьте бота админом в канал (право «Публикация сообщений») или впишите адрес канала, например @airfixer" }, 404);
+      }
+      for (const chat of chats) await saveTelegramChannel(c.env.DB, chat);
+      await audit(c.env.DB, "direct connect telegram", chats.map((x) => x.title ?? x.id).join(", "));
+      return c.json({ ok: true as const, names: chats.map((x) => x.title ?? x.username ?? String(x.id)) });
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof TelegramError ? e.message : "Нет связи с Telegram — попробуйте ещё раз" }, 502);
+    }
   })
   // Кнопка «Подключить Instagram и Facebook» → вход в Facebook
   .get("/meta/start", async (c) => {

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import {
   BufferPostListSchema,
   ChannelListSchema,
@@ -139,6 +140,30 @@ export const directKey = ["direct-accounts"] as const;
 export function useDirectAccounts() {
   return useQuery<DirectAccounts>({ queryKey: directKey, queryFn: () => apiGet("/connect/accounts", DirectAccountsSchema), staleTime: 60_000 });
 }
+/** Telegram: подключить канал по адресу (@name) или найти, куда бота добавили админом. */
+export function useConnectTelegram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (address: string) => {
+      const res = await fetch("/api/v2/connect/telegram", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
+      });
+      const data: unknown = await res.json().catch(() => null);
+      const ok = z.object({ ok: z.literal(true), names: z.array(z.string()) }).safeParse(data);
+      if (res.ok && ok.success) return ok.data.names;
+      const err = ApiErrorSchema.safeParse(data);
+      throw new ApiRequestError(err.success ? err.data.error : `Ошибка (${res.status})`, res.status);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: directKey });
+      void qc.invalidateQueries({ queryKey: channelsKey });
+    },
+  });
+}
+
 export function useDisconnect() {
   const qc = useQueryClient();
   return useMutation({

@@ -6,6 +6,8 @@ const SERVICE: Readonly<Record<string, { short: string; cls: string; label: stri
   tiktok: { short: "TT", cls: "bg-black ring-1 ring-white/30", label: "TikTok" },
   youtube: { short: "YT", cls: "bg-[#ff0000]", label: "YouTube" },
   googlebusiness: { short: "G", cls: "bg-[#34a853]", label: "Google" },
+  telegram: { short: "TG", cls: "bg-[#229ed9]", label: "Telegram" },
+  threads: { short: "@", cls: "bg-black ring-1 ring-white/30", label: "Threads" },
 };
 export const serviceInfo = (s: string) => SERVICE[s] ?? { short: s.slice(0, 2).toUpperCase(), cls: "bg-white/20", label: s };
 

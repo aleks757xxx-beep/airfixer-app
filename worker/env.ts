@@ -15,6 +15,10 @@ export interface Env {
   TOKEN_KEY?: string;
   /** Только для локальной проверки: адрес заглушки Graph API */
   META_GRAPH_URL?: string;
+  /** Бот Telegram для публикации в канал (секрет от @BotFather) */
+  TG_BOT_TOKEN?: string;
+  /** Только для локальной проверки (заглушка Bot API) */
+  TG_API_URL?: string;
 }
 
 export type AppBindings = { Bindings: Env };

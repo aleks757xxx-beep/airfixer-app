@@ -1,5 +1,5 @@
 import type { BufferPost, Channel, ComposeInput, ComposeResult } from "../../shared/schemas";
-import { TBILISI_OFFSET_MS } from "../../shared/schemas";
+import { TBILISI_OFFSET_MS, TEXT_LIMITS, TG_MAX_BYTES } from "../../shared/schemas";
 import type { Env } from "../env";
 import { open, seal } from "../lib/secretbox";
 import {
@@ -12,6 +12,7 @@ import {
   igPublish,
   type MetaPage,
 } from "./meta";
+import { TelegramError, sendVideo, type TgChat } from "./telegram";
 
 /** Прямая публикация (без Buffer): аккаунты, своя очередь со слотами, отправка к сроку (cron). */
 
@@ -22,7 +23,7 @@ const PROCESS_TIMEOUT_MS = 45 * 60_000;
 
 interface AccountRow {
   id: string;
-  service: "instagram" | "facebook" | "youtube";
+  service: "instagram" | "facebook" | "youtube" | "telegram" | "threads";
   name: string;
   external_id: string;
   page_id: string | null;
@@ -55,7 +56,7 @@ interface PostRow {
 }
 type Slot = { day: string; times: string[]; paused: boolean };
 
-export const isDirectChannel = (id: string) => /^(ig|fb|yt):/.test(id);
+export const isDirectChannel = (id: string) => /^(ig|fb|yt|tg|th):/.test(id);
 export const isDirectPost = (id: string) => id.startsWith("dp_");
 
 function slotsOf(a: AccountRow): Slot[] {
@@ -91,12 +92,26 @@ export function accountToChannel(a: AccountRow): Channel {
  * Сохранить страницы и Instagram после входа в Meta.
  * Слоты и «какой канал Buffer заменяет» — по совпадению сети и имени с каналами Buffer.
  */
+/** Аккаунты, которые владелец отключил: при «Переподключить» они не возвращаются. */
+const HIDDEN_KEY = "direct_hidden";
+async function hiddenIds(db: D1Database): Promise<string[]> {
+  const r = await db.prepare("SELECT value FROM app_settings WHERE key = ?").bind(HIDDEN_KEY).first<{ value: string }>();
+  try {
+    const v: unknown = r ? JSON.parse(r.value) : [];
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function saveMetaAccounts(env: Env, pages: ReadonlyArray<MetaPage>, bufferChannels: ReadonlyArray<Channel>): Promise<number> {
   const now = Date.now();
   let n = 0;
+  const hidden = new Set(await hiddenIds(env.DB));
   const match = (service: string, name: string) =>
     bufferChannels.find((c) => c.service === service && (c.name.toLowerCase() === name.toLowerCase() || (c.displayName ?? "").toLowerCase() === name.toLowerCase()));
   const upsert = async (id: string, service: "instagram" | "facebook", name: string, externalId: string, pageId: string | null, token: string) => {
+    if (hidden.has(id)) return;
     const buf = match(service, name);
     await env.DB.prepare(
       `INSERT INTO direct_accounts (id, service, name, external_id, page_id, token_enc, token_expires_at, replaces, slots, created_at, updated_at)
@@ -116,8 +131,26 @@ export async function saveMetaAccounts(env: Env, pages: ReadonlyArray<MetaPage>,
   return n;
 }
 
+/** Сохранить канал Telegram (бот — админ). Слоты — как у Instagram airfixer.ge, если он подключён. */
+export async function saveTelegramChannel(db: D1Database, chat: TgChat): Promise<void> {
+  const now = Date.now();
+  const ig = await db.prepare("SELECT slots FROM direct_accounts WHERE service = 'instagram' ORDER BY created_at LIMIT 1").first<{ slots: string | null }>();
+  await db
+    .prepare(
+      `INSERT INTO direct_accounts (id, service, name, external_id, page_id, token_enc, token_expires_at, replaces, slots, created_at, updated_at)
+       VALUES (?, 'telegram', ?, ?, ?, '', NULL, NULL, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, page_id = excluded.page_id, updated_at = excluded.updated_at`,
+    )
+    .bind(`tg:${chat.id}`, chat.title ?? chat.username ?? `Канал ${chat.id}`, String(chat.id), chat.username ?? null, ig?.slots ?? JSON.stringify(DEFAULT_SLOTS), now, now)
+    .run();
+}
+
 export async function disconnectAccount(db: D1Database, id: string): Promise<void> {
+  const hidden = [...new Set([...(await hiddenIds(db)), id])];
   await db.batch([
+    db.prepare(
+      "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    ).bind(HIDDEN_KEY, JSON.stringify(hidden), Date.now()),
     db.prepare("DELETE FROM direct_posts WHERE account_id = ? AND status IN ('draft','scheduled')").bind(id),
     db.prepare("DELETE FROM direct_accounts WHERE id = ?").bind(id),
   ]);
@@ -164,6 +197,11 @@ export async function createDirectPosts(
     const a = await db.prepare("SELECT * FROM direct_accounts WHERE id = ?").bind(t.channelId).first<AccountRow>();
     if (!a) {
       out.push({ channelId: t.channelId, ok: false, postId: null, error: "Аккаунт не подключён" });
+      continue;
+    }
+    const limit = TEXT_LIMITS[a.service];
+    if (limit && t.text.length > limit) {
+      out.push({ channelId: a.id, ok: false, postId: null, error: `Подпись длиннее ${limit} знаков` });
       continue;
     }
     let due: number | null;
@@ -283,8 +321,9 @@ async function step(env: Env, p: PostRow): Promise<void> {
   const db = env.DB;
   const a = await db.prepare("SELECT * FROM direct_accounts WHERE id = ?").bind(p.account_id).first<AccountRow>();
   if (!a) return fail(db, p, "Аккаунт отключён");
-  const token = await open(env.TOKEN_KEY, a.token_enc);
   const now = Date.now();
+  if (a.service === "telegram") return stepTelegram(env, p, a);
+  const token = await open(env.TOKEN_KEY, a.token_enc);
 
   if (p.status === "scheduled") {
     const m = await db.prepare("SELECT r2_key FROM media WHERE id = ? AND deleted_at IS NULL").bind(p.media_id).first<{ r2_key: string }>();
@@ -332,6 +371,45 @@ async function step(env: Env, p: PostRow): Promise<void> {
   }
 }
 
+/** Telegram: отправка в один шаг. Ролик больше 50 МБ — берём лёгкую копию «имя.tg.mp4». */
+async function stepTelegram(env: Env, p: PostRow, a: AccountRow): Promise<void> {
+  const db = env.DB;
+  if (p.status === "processing") {
+    // отправка идёт в другом запуске; если зависла — не шлём второй раз, чтобы не было дубля
+    if (Date.now() - p.updated_at > 15 * 60_000) return fail(db, p, "Не удалось подтвердить отправку в Telegram — проверьте канал; если поста нет, нажмите «Повторить»");
+    return;
+  }
+  const token = env.TG_BOT_TOKEN?.trim();
+  if (!token) return fail(db, p, "Не задан ключ бота Telegram (TG_BOT_TOKEN)");
+  const m = await db.prepare("SELECT r2_key, name, size FROM media WHERE id = ? AND deleted_at IS NULL").bind(p.media_id).first<{ r2_key: string; name: string; size: number }>();
+  if (!m) return fail(db, p, "Ролик удалён из библиотеки");
+  let key = m.r2_key;
+  let name = m.name;
+  if (m.size > TG_MAX_BYTES) {
+    const v = await db.prepare("SELECT r2_key, name, size FROM media_variants WHERE media_id = ? AND kind = 'tg'").bind(p.media_id).first<{ r2_key: string; name: string; size: number }>();
+    if (!v) return fail(db, p, "Ролик больше 50 МБ, а лёгкой копии для Telegram нет. Claude делает её при монтаже («имя.tg.mp4» в «Готовое») — потом нажмите «Повторить»");
+    if (v.size > TG_MAX_BYTES) return fail(db, p, "Лёгкая копия для Telegram тоже больше 50 МБ — нужна сильнее сжатая");
+    key = v.r2_key;
+    name = v.name;
+  }
+  const obj = await env.BUCKET.get(key);
+  if (!obj) return fail(db, p, "Файл ролика не найден в хранилище");
+  await db.prepare("UPDATE direct_posts SET status = 'processing', attempts = attempts + 1, updated_at = ? WHERE id = ?").bind(Date.now(), p.id).run();
+  const blob = new Blob([await obj.arrayBuffer()], { type: obj.httpMetadata?.contentType ?? "video/mp4" });
+  let sent: { messageId: number; link: string };
+  try {
+    sent = await sendVideo(token, a.external_id, blob, name, p.text);
+  } catch (e: unknown) {
+    if (e instanceof TelegramError) return fail(db, p, e.message);
+    return fail(db, p, "Связь с Telegram прервалась — проверьте канал; если поста нет, нажмите «Повторить»");
+  }
+  const now = Date.now();
+  await db
+    .prepare("UPDATE direct_posts SET status = 'sent', external_id = ?, external_link = ?, sent_at = ?, error = NULL, updated_at = ? WHERE id = ?")
+    .bind(String(sent.messageId), sent.link, now, now, p.id)
+    .run();
+}
+
 /** Обработать созревшие посты (не больше 5 за раз, чтобы уложиться в лимиты Worker). */
 export async function processDirectQueue(env: Env): Promise<number> {
   const rows = await env.DB.prepare(
@@ -345,7 +423,7 @@ export async function processDirectQueue(env: Env): Promise<number> {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "ошибка";
       // сетевые сбои — повторим на следующей минуте (до 3 попыток), ошибки Meta — сразу показываем
-      if (e instanceof MetaError || p.attempts >= 3) await fail(env.DB, p, msg);
+      if (e instanceof MetaError || e instanceof TelegramError || p.attempts >= 3) await fail(env.DB, p, msg);
       else await env.DB.prepare("UPDATE direct_posts SET attempts = attempts + 1 WHERE id = ?").bind(p.id).run();
     }
   }
