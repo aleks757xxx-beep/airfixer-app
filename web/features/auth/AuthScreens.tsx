@@ -37,9 +37,12 @@ export function LoginPage() {
     <Shell title="PostFixer" subtitle="Постинг для AirFixer">
       <form onSubmit={submit}>
         <ErrorText text={login.error?.message ?? null} />
+        {/* Логин для «Паролей» Apple: чтобы связка ключей сохранила и подставляла пароль и код */}
+        <input type="text" name="username" autoComplete="username" value="postfixer" readOnly hidden />
         <input
           className={inputCls}
           type="password"
+          name="password"
           autoComplete="current-password"
           placeholder="Пароль"
           value={password}
@@ -69,6 +72,7 @@ function CodeForm({ submitLabel }: { submitLabel: string }) {
       <input
         className={`${inputCls} text-center text-2xl tracking-[0.4em]`}
         inputMode="numeric"
+        name="otp"
         autoComplete="one-time-code"
         pattern="\d{6}"
         maxLength={6}
