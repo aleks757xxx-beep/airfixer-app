@@ -41,7 +41,7 @@ function DirectConnections() {
         ))}
       </ul>
       {q.data && !q.data.meta.configured ? (
-        <p className="text-amber-300">Чтобы подключить Instagram и Facebook, в Cloudflare нужны ключи приложения Meta — добавим вместе с Claude.</p>
+        <p className="text-amber-300">Чтобы подключить Instagram и Facebook, в Cloudflare нужны секреты META_APP_SECRET и TOKEN_KEY.</p>
       ) : null}
       <a
         href="/api/v2/connect/meta/start"

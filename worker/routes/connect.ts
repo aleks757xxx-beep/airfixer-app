@@ -4,13 +4,14 @@ import type { AppBindings } from "../env";
 import { audit } from "../middleware/auth";
 import { randomToken } from "../lib/crypto";
 import { BufferError } from "../services/buffer";
-import { MetaError, exchangeCode, listPages, metaLoginUrl } from "../services/meta";
+import { META_APP_ID_DEFAULT, META_CONFIG_ID_DEFAULT, MetaError, exchangeCode, listPages, metaLoginUrl } from "../services/meta";
 import { accountToChannel, disconnectAccount, listAccounts, saveMetaAccounts, setSlots } from "../services/direct";
 import { listChannels } from "../services/publish";
 import { migrated } from "./media";
 
 const STATE_TTL_MS = 10 * 60_000;
 const redirectUri = (url: string) => `https://${new URL(url).host}/api/v2/connect/meta/callback`;
+const appId = (env: { META_APP_ID?: string }) => env.META_APP_ID?.trim() || META_APP_ID_DEFAULT;
 
 const SlotsSchema = z.array(
   z.object({ day: z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]), times: z.array(z.string().regex(/^\d{2}:\d{2}$/)).max(24), paused: z.boolean() }),
@@ -23,16 +24,16 @@ export const connect = new Hono<AppBindings>()
     const accounts = await listAccounts(c.env.DB);
     return c.json({
       items: accounts.map((a) => ({ ...accountToChannel(a), replaces: a.replaces })),
-      meta: { configured: !!(c.env.META_APP_ID && c.env.META_APP_SECRET && c.env.TOKEN_KEY) },
+      meta: { configured: !!(c.env.META_APP_SECRET && c.env.TOKEN_KEY) },
     });
   })
   // Кнопка «Подключить Instagram и Facebook» → вход в Facebook
   .get("/meta/start", async (c) => {
-    if (!c.env.META_APP_ID || !c.env.META_APP_SECRET || !c.env.TOKEN_KEY) return c.redirect("/#/status?connect_error=" + encodeURIComponent("Не заданы META_APP_ID / META_APP_SECRET / TOKEN_KEY"));
+    if (!c.env.META_APP_SECRET || !c.env.TOKEN_KEY) return c.redirect("/#/status?connect_error=" + encodeURIComponent("Не заданы META_APP_SECRET / TOKEN_KEY"));
     const state = randomToken(24);
     await c.env.DB.prepare("DELETE FROM oauth_states WHERE created_at < ?").bind(Date.now() - STATE_TTL_MS).run();
     await c.env.DB.prepare("INSERT INTO oauth_states (state, provider, created_at) VALUES (?, 'meta', ?)").bind(state, Date.now()).run();
-    return c.redirect(metaLoginUrl(c.env.META_APP_ID, redirectUri(c.req.url), state));
+    return c.redirect(metaLoginUrl(appId(c.env), redirectUri(c.req.url), state, META_CONFIG_ID_DEFAULT));
   })
   .delete("/accounts/:id", async (c) => {
     await disconnectAccount(c.env.DB, c.req.param("id"));
@@ -58,9 +59,9 @@ export const connectCallback = new Hono<AppBindings>().use("*", migrated).get("/
   await c.env.DB.prepare("DELETE FROM oauth_states WHERE state = ?").bind(state).run();
   if (!row || Date.now() - row.created_at > STATE_TTL_MS) return back("connect_error=" + encodeURIComponent("Ссылка входа устарела — нажмите «Подключить» ещё раз"));
   if (!code) return back("connect_error=" + encodeURIComponent(c.req.query("error_description") ?? "Вход в Facebook отменён"));
-  if (!c.env.META_APP_ID || !c.env.META_APP_SECRET) return back("connect_error=" + encodeURIComponent("Не задано приложение Meta"));
+  if (!c.env.META_APP_SECRET) return back("connect_error=" + encodeURIComponent("Не задан META_APP_SECRET"));
   try {
-    const userToken = await exchangeCode(c.env.META_APP_ID, c.env.META_APP_SECRET, redirectUri(c.req.url), code);
+    const userToken = await exchangeCode(appId(c.env), c.env.META_APP_SECRET, redirectUri(c.req.url), code);
     const pages = await listPages(userToken);
     if (pages.length === 0) return back("connect_error=" + encodeURIComponent("Facebook не дал доступ ни к одной странице — при входе отметьте страницу AirFixer"));
     const key = c.env.BUFFER_API_KEY?.trim();

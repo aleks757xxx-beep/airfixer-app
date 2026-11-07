@@ -58,8 +58,14 @@ export const META_SCOPES = [
   "instagram_manage_insights",
 ].join(",");
 
-export function metaLoginUrl(appId: string, redirectUri: string, state: string): string {
-  const qs = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, state, scope: META_SCOPES, response_type: "code" });
+/** Приложение Meta «PostFixer» (не секрет) и конфигурация входа «PostFixer publish» (10 прав). */
+export const META_APP_ID_DEFAULT = "2206384923628133";
+export const META_CONFIG_ID_DEFAULT = "3012047265809430";
+
+/** Вход через Facebook для компаний: права задаются конфигурацией (config_id). */
+export function metaLoginUrl(appId: string, redirectUri: string, state: string, configId?: string): string {
+  const base = { client_id: appId, redirect_uri: redirectUri, state, response_type: "code" };
+  const qs = new URLSearchParams(configId ? { ...base, config_id: configId } : { ...base, scope: META_SCOPES });
   return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${qs.toString()}`;
 }
 
