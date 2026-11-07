@@ -1,0 +1,251 @@
+// AirFixer — приложение для постинга (Cloudflare Worker)
+// Нужно в настройках Worker:
+//   R2 binding:  BUCKET  -> airfixer-video
+//   Secret:      BUFFER_API_KEY  (ключ из Buffer → Settings → API)
+//   Secret:      APP_PASSWORD    (пароль для входа в приложение)
+
+const BUFFER_API = "https://api.buffer.com";
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // Видео отдаются публично — их скачивает Buffer в момент публикации
+    if (url.pathname.startsWith("/media/")) return serveMedia(request, env, url);
+
+    // Всё остальное — только с паролем
+    if (!checkAuth(request, env)) {
+      return new Response("Нужен пароль", {
+        status: 401,
+        headers: { "WWW-Authenticate": 'Basic realm="AirFixer", charset="UTF-8"' },
+      });
+    }
+
+    try {
+      if (url.pathname === "/" && request.method === "GET") return html(PAGE);
+      if (url.pathname === "/api/channels" && request.method === "GET") return json(await getChannels(env));
+      if (url.pathname === "/api/upload" && request.method === "POST") return json(await upload(request, env, url));
+      if (url.pathname === "/api/schedule" && request.method === "POST") return json(await schedule(request, env, url));
+      return new Response("Not found", { status: 404 });
+    } catch (e) {
+      return json({ error: String(e && e.message ? e.message : e) }, 500);
+    }
+  },
+
+  // Автоочистка: удаляет ролики старше 30 дней (если включить Cron Trigger)
+  async scheduled(event, env) {
+    const limit = Date.now() - 30 * 24 * 3600 * 1000;
+    let cursor;
+    do {
+      const list = await env.BUCKET.list({ prefix: "videos/", cursor });
+      const old = list.objects.filter((o) => o.uploaded.getTime() < limit).map((o) => o.key);
+      if (old.length) await env.BUCKET.delete(old);
+      cursor = list.truncated ? list.cursor : undefined;
+    } while (cursor);
+  },
+};
+
+// ---------- auth ----------
+function checkAuth(request, env) {
+  const h = request.headers.get("Authorization") || "";
+  if (!h.startsWith("Basic ") || !env.APP_PASSWORD) return false;
+  let decoded = "";
+  try {
+    decoded = new TextDecoder().decode(Uint8Array.from(atob(h.slice(6)), (c) => c.charCodeAt(0)));
+  } catch { return false; }
+  const pass = decoded.slice(decoded.indexOf(":") + 1);
+  return pass === env.APP_PASSWORD;
+}
+
+// ---------- media ----------
+async function serveMedia(request, env, url) {
+  const key = decodeURIComponent(url.pathname.slice("/media/".length));
+  const obj = await env.BUCKET.get(key, { range: request.headers, onlyIf: request.headers });
+  if (obj === null) return new Response("Not found", { status: 404 });
+  const headers = new Headers();
+  obj.writeHttpMetadata(headers);
+  headers.set("etag", obj.httpEtag);
+  headers.set("accept-ranges", "bytes");
+  headers.set("cache-control", "public, max-age=86400");
+  if (!("body" in obj)) return new Response(null, { status: 304, headers });
+  let status = 200;
+  if (obj.range && request.headers.has("range")) {
+    const r = obj.range;
+    const start = r.offset ?? (r.suffix !== undefined ? obj.size - r.suffix : 0);
+    const len = r.length ?? (r.suffix !== undefined ? r.suffix : obj.size - start);
+    headers.set("content-range", `bytes ${start}-${start + len - 1}/${obj.size}`);
+    headers.set("content-length", String(len));
+    status = 206;
+  } else {
+    headers.set("content-length", String(obj.size));
+  }
+  return new Response(request.method === "HEAD" ? null : obj.body, { status, headers });
+}
+
+async function upload(request, env, url) {
+  const name = (url.searchParams.get("name") || "video.mp4")
+    .replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80);
+  const key = `videos/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${name}`;
+  await env.BUCKET.put(key, request.body, {
+    httpMetadata: { contentType: request.headers.get("content-type") || "video/mp4" },
+  });
+  return { key, url: `${url.origin}/media/${encodeURIComponent(key).replace(/%2F/g, "/")}` };
+}
+
+// ---------- Buffer ----------
+async function buffer(env, query) {
+  if (!env.BUFFER_API_KEY) throw new Error("Не задан секрет BUFFER_API_KEY");
+  const res = await fetch(BUFFER_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.BUFFER_API_KEY}` },
+    body: JSON.stringify({ query }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.errors) throw new Error("Buffer: " + JSON.stringify(data.errors || data || res.status));
+  return data.data;
+}
+
+async function getChannels(env) {
+  const acc = await buffer(env, `query { account { organizations { id name } } }`);
+  const out = [];
+  for (const org of acc.account.organizations) {
+    const ch = await buffer(env, `query { channels(input: { organizationId: ${s(org.id)} }) { id name service } }`);
+    for (const c of ch.channels) out.push({ ...c, organization: org.name });
+  }
+  return { channels: out };
+}
+
+// GraphQL helpers: строка в кавычках / enum без кавычек
+const s = (v) => JSON.stringify(String(v));
+
+function metadataFor(service, opts) {
+  switch (service) {
+    case "instagram": return `instagram: { type: reel, shouldShareToFeed: true }`;
+    case "facebook":  return `facebook: { type: reel }`;
+    case "youtube":   return `youtube: { title: ${s(opts.ytTitle || "AirFixer")}, categoryId: "26", privacy: public, madeForKids: false }`;
+    case "tiktok":    return `tiktok: { isAiGenerated: false }`;
+    default: return "";
+  }
+}
+
+async function schedule(request, env, url) {
+  const b = await request.json();
+  if (!b.mediaUrl) throw new Error("Нет видео");
+  if (!b.channels || !b.channels.length) throw new Error("Не выбраны каналы");
+  const when = b.dueAt
+    ? `mode: customScheduled, dueAt: ${s(new Date(b.dueAt).toISOString())}`
+    : `mode: addToQueue`;
+  const results = [];
+  for (const ch of b.channels) {
+    const meta = metadataFor(ch.service, b);
+    const q = `mutation { createPost(input: {
+      text: ${s(b.text || "")},
+      channelId: ${s(ch.id)},
+      schedulingType: automatic,
+      ${when},
+      assets: [{ video: { url: ${s(b.mediaUrl)}, metadata: { thumbnailOffset: 1500 } } }]
+      ${meta ? `, metadata: { ${meta} }` : ""}
+    }) {
+      ... on PostActionSuccess { post { id dueAt } }
+      ... on MutationError { message }
+    } }`;
+    try {
+      const d = await buffer(env, q);
+      const r = d.createPost;
+      results.push({ channel: ch.name, service: ch.service, ok: !!r.post, message: r.message || "", dueAt: r.post && r.post.dueAt });
+    } catch (e) {
+      results.push({ channel: ch.name, service: ch.service, ok: false, message: String(e.message || e) });
+    }
+  }
+  return { results };
+}
+
+// ---------- utils ----------
+const json = (o, status = 200) =>
+  new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+const html = (t) => new Response(t, { headers: { "content-type": "text/html; charset=utf-8" } });
+
+// ---------- страница приложения ----------
+const PAGE = `<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AirFixer — Постинг</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#2D2C38;--dark:#10121A;--card:#1f1e29;--line:rgba(255,255,255,.12);--blue:#3763F4;--blueL:#6E8BFF;--tg:#2AABEE;--wa:#25D366;--text:#fff;--muted:rgba(255,255,255,.65)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Helvetica,Arial,sans-serif}
+header{position:sticky;top:0;background:rgba(16,18,26,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
+header span{color:var(--blueL);font-weight:600;font-size:14px;margin-left:auto}
+main{max-width:640px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:30px;font-weight:800;margin:6px 0 4px}.sub{color:var(--blueL);font-weight:600;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
+label{display:block;font-weight:600;margin-bottom:8px}
+input[type=text],input[type=datetime-local],textarea{width:100%;background:var(--dark);border:1px solid var(--line);color:#fff;border-radius:12px;padding:12px;font:inherit}
+textarea{min-height:130px;resize:vertical}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted);cursor:pointer}
+.drop.has{border-color:var(--blue);color:#fff}video{width:100%;max-height:420px;border-radius:12px;margin-top:12px;background:#000}
+.bar{height:8px;background:var(--dark);border-radius:8px;overflow:hidden;margin-top:10px;display:none}.bar i{display:block;height:100%;width:0;background:var(--blue)}
+.ch{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.ch:last-child{border:0}
+.ch input{width:20px;height:20px}.tag{font-size:12px;color:var(--muted);margin-left:auto;text-transform:capitalize}
+.btn{width:100%;border:0;border-radius:999px;padding:16px;font:700 17px Inter,sans-serif;color:#fff;background:var(--tg);cursor:pointer}
+.btn:disabled{opacity:.5}.row{display:flex;gap:10px}.row>*{flex:1}
+.small{font-size:13px;color:var(--muted);margin-top:6px}.res div{padding:6px 0}.ok{color:var(--wa)}.err{color:#ff7b7b}
+</style></head><body>
+<header>🍁 AirFixer <span>Постинг</span></header>
+<main>
+<h1>Новый пост</h1><div class="sub">Видео · Подпись · Время · Все соцсети</div>
+
+<div class="card"><label>1. Видео</label>
+<div class="drop" id="drop">Нажмите или перетащите ролик сюда</div>
+<input type="file" id="file" accept="video/*" hidden>
+<video id="prev" controls hidden></video>
+<div class="bar" id="bar"><i></i></div><div class="small" id="upInfo"></div></div>
+
+<div class="card"><label>2. Подпись</label>
+<textarea id="text" placeholder="Текст поста и хэштеги"></textarea>
+<label style="margin-top:14px">Название для YouTube</label>
+<input type="text" id="yt" placeholder="Например: Монтаж кондиционера Midea в Тбилиси"></div>
+
+<div class="card"><label>3. Когда</label>
+<div class="row"><input type="datetime-local" id="when"></div>
+<div class="small">Пусто — в ближайший свободный слот очереди Buffer. Время — по Тбилиси.</div></div>
+
+<div class="card"><label>4. Куда</label><div id="chs" class="small">Загружаю каналы…</div></div>
+
+<button class="btn" id="go" disabled>Запланировать</button>
+<div class="card res" id="res" hidden></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let media=null,channels=[];
+fetch('/api/channels').then(r=>r.json()).then(d=>{
+  if(d.error){$('chs').textContent='Ошибка: '+d.error;return}
+  channels=d.channels;$('chs').className='';
+  $('chs').innerHTML=channels.map((c,i)=>'<div class="ch"><input type="checkbox" id="c'+i+'" checked><label for="c'+i+'" style="margin:0;font-weight:600">'+c.name+'</label><span class="tag">'+c.service+'</span></div>').join('');
+});
+$('drop').onclick=()=>$('file').click();
+$('drop').ondragover=e=>{e.preventDefault()};
+$('drop').ondrop=e=>{e.preventDefault();if(e.dataTransfer.files[0])send(e.dataTransfer.files[0])};
+$('file').onchange=()=>{if($('file').files[0])send($('file').files[0])};
+function send(f){
+  media=null;$('go').disabled=true;$('drop').textContent=f.name;$('drop').classList.add('has');
+  $('prev').src=URL.createObjectURL(f);$('prev').hidden=false;
+  if(f.size>95*1024*1024){$('upInfo').textContent='Файл больше 95 МБ — сожмите ролик';return}
+  const x=new XMLHttpRequest();x.open('POST','/api/upload?name='+encodeURIComponent(f.name));
+  x.setRequestHeader('content-type',f.type||'video/mp4');$('bar').style.display='block';
+  x.upload.onprogress=e=>{$('bar').firstChild.style.width=(e.loaded/e.total*100)+'%';$('upInfo').textContent='Загрузка '+Math.round(e.loaded/e.total*100)+'%'};
+  x.onload=()=>{const d=JSON.parse(x.responseText);if(d.error){$('upInfo').textContent='Ошибка: '+d.error;return}
+    media=d.url;$('upInfo').textContent='Загружено ✓';$('go').disabled=false};
+  x.onerror=()=>{$('upInfo').textContent='Ошибка загрузки'};x.send(f);
+}
+$('go').onclick=async()=>{
+  const sel=channels.filter((c,i)=>$('c'+i)&&$('c'+i).checked);
+  if(!sel.length){alert('Выберите каналы');return}
+  if(sel.some(c=>c.service==='youtube')&&!$('yt').value.trim()){$('yt').focus();$('yt').placeholder='Нужно название для YouTube';return}
+  const w=$('when').value;$('go').disabled=true;$('go').textContent='Отправляю…';
+  const r=await fetch('/api/schedule',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
+    mediaUrl:media,text:$('text').value,ytTitle:$('yt').value,dueAt:w?new Date(w).toISOString():null,
+    channels:sel.map(c=>({id:c.id,name:c.name,service:c.service}))})}).then(r=>r.json());
+  $('res').hidden=false;$('go').textContent='Запланировать';$('go').disabled=false;
+  if(r.error){$('res').innerHTML='<div class="err">'+r.error+'</div>';return}
+  $('res').innerHTML=r.results.map(x=>'<div class="'+(x.ok?'ok':'err')+'">'+(x.ok?'✓ ':'✗ ')+x.channel+' ('+x.service+')'+(x.ok?(x.dueAt?' — '+new Date(x.dueAt).toLocaleString('ru-RU'):''):' — '+x.message)+'</div>').join('');
+};
+</script></body></html>`;

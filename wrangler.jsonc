@@ -1,0 +1,19 @@
+{
+  // AirFixer — приложение для постинга
+  "name": "airfixer-app",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+
+  // Хранилище видео
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "airfixer-video" }],
+
+  // Автоочистка старых роликов: каждый день в 07:00 по Тбилиси
+  "triggers": { "crons": ["0 3 * * *"] },
+
+  // Адрес приложения
+  "routes": [{ "pattern": "app.airfixer.ge", "custom_domain": true }]
+
+  // Секреты (задаются в панели Cloudflare, не в коде):
+  //   BUFFER_API_KEY, APP_PASSWORD
+}
