@@ -1,17 +1,23 @@
-import { Hono, type Context } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import type { AppBindings } from "../env";
 import {
   ALLOWED_VIDEO_EXT,
-  MAX_UPLOAD_BYTES,
+  PART_SIZE,
+  UploadCompleteInputSchema,
+  UploadStartInputSchema,
   type MediaItem,
   type MediaList,
   type MediaSource,
+  type UploadPart,
   type UploadResult,
+  type UploadStart,
 } from "../../shared/schemas";
 import { audit } from "../middleware/auth";
 import { safeEqual } from "../lib/crypto";
+import { ensureMigrated } from "../lib/migrate";
 
 const FREE_R2_BYTES = 10 * 1024 ** 3; // 10 ГБ бесплатно
+const UPLOAD_TTL_MS = 24 * 3600 * 1000; // незавершённая загрузка живёт сутки
 
 interface MediaRow {
   id: string;
@@ -19,6 +25,16 @@ interface MediaRow {
   name: string;
   size: number;
   mime: string | null;
+  source: MediaSource;
+  created_at: number;
+}
+interface UploadRow {
+  id: string;
+  r2_key: string;
+  r2_upload_id: string;
+  name: string;
+  size: number;
+  mime: string;
   source: MediaSource;
   created_at: number;
 }
@@ -40,23 +56,19 @@ function extOf(name: string): string | null {
   return ext && (ALLOWED_VIDEO_EXT as ReadonlyArray<string>).includes(ext) ? ext : null;
 }
 const mimeFor = (ext: string) => (ext === "mov" ? "video/quicktime" : "video/mp4");
-
-function cleanName(raw: string): string {
-  return raw.normalize("NFC").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 160) || "video.mp4";
-}
+const cleanName = (raw: string) => raw.normalize("NFC").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 160) || "video.mp4";
 
 type Ctx = Context<AppBindings>;
+const partsCount = (size: number) => Math.max(1, Math.ceil(size / PART_SIZE));
 
-/** Общая загрузка: проверки, дубликаты, запись в R2 и D1. */
-async function storeVideo(c: Ctx, rawName: string, source: MediaSource): Promise<Response> {
-  const name = cleanName(rawName);
+/** Начать загрузку частями. Если такой ролик уже есть (имя + размер) — вернуть его. */
+async function start(c: Ctx, source: MediaSource): Promise<Response> {
+  const parsed = UploadStartInputSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Неверные данные файла (или файл больше 5 ГБ)" }, 400);
+  const name = cleanName(parsed.data.name);
   const ext = extOf(name);
   if (!ext) return c.json({ error: "Можно загружать только видео .mp4, .mov, .m4v" }, 400);
-  const size = Number(c.req.header("Content-Length") ?? "0");
-  if (!Number.isFinite(size) || size <= 0) return c.json({ error: "Пустой файл" }, 400);
-  if (size > MAX_UPLOAD_BYTES) return c.json({ error: "Файл больше 95 МБ — сожмите ролик" }, 413);
-  const body = c.req.raw.body;
-  if (!body) return c.json({ error: "Пустой файл" }, 400);
+  const size = parsed.data.size;
 
   const dup = await c.env.DB.prepare(
     "SELECT id, r2_key, name, size, mime, source, created_at FROM media WHERE name = ? AND size = ? AND deleted_at IS NULL",
@@ -64,41 +76,103 @@ async function storeVideo(c: Ctx, rawName: string, source: MediaSource): Promise
     .bind(name, size)
     .first<MediaRow>();
   if (dup) {
-    await body.cancel();
-    const r: UploadResult = { item: toItem(dup), duplicate: true };
+    const r: UploadStart = { duplicate: true, item: toItem(dup) };
     return c.json(r);
   }
 
   const id = crypto.randomUUID();
   const key = `videos/${id}.${ext}`; // случайное имя — не подобрать
   const mime = mimeFor(ext);
-  await c.env.BUCKET.put(key, body, { httpMetadata: { contentType: mime } });
-  const row: MediaRow = { id, r2_key: key, name, size, mime, source, created_at: Date.now() };
-  await c.env.DB.prepare("INSERT INTO media (id, r2_key, name, size, mime, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(row.id, row.r2_key, row.name, row.size, row.mime, row.source, row.created_at)
+  const mp = await c.env.BUCKET.createMultipartUpload(key, { httpMetadata: { contentType: mime } });
+  await c.env.DB.prepare(
+    "INSERT INTO uploads (id, r2_key, r2_upload_id, name, size, mime, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  )
+    .bind(id, key, mp.uploadId, name, size, mime, source, Date.now())
     .run();
-  await audit(c.env.DB, `media ${source}`, name);
+  const r: UploadStart = { duplicate: false, uploadId: id, partSize: PART_SIZE, parts: partsCount(size) };
+  return c.json(r);
+}
+
+async function getUpload(c: Ctx, source: MediaSource): Promise<UploadRow | null> {
+  const row = await c.env.DB.prepare(
+    "SELECT id, r2_key, r2_upload_id, name, size, mime, source, created_at FROM uploads WHERE id = ? AND source = ?",
+  )
+    .bind(c.req.param("uploadId") ?? "", source)
+    .first<UploadRow>();
+  if (!row || row.created_at < Date.now() - UPLOAD_TTL_MS) return null;
+  return row;
+}
+
+/** Одна часть (до 50 МБ). Номера частей с 1. */
+async function part(c: Ctx, source: MediaSource): Promise<Response> {
+  const up = await getUpload(c, source);
+  if (!up) return c.json({ error: "Загрузка не найдена или устарела — начните заново" }, 404);
+  const n = Number(c.req.param("n"));
+  const total = partsCount(up.size);
+  if (!Number.isInteger(n) || n < 1 || n > total) return c.json({ error: "Неверный номер части" }, 400);
+  const len = Number(c.req.header("Content-Length") ?? "0");
+  const expected = n < total ? PART_SIZE : up.size - PART_SIZE * (total - 1);
+  if (len !== expected) return c.json({ error: `Часть ${n}: ожидалось ${expected} байт, пришло ${len}` }, 400);
+  const body = c.req.raw.body;
+  if (!body) return c.json({ error: "Пустая часть" }, 400);
+  const mp = c.env.BUCKET.resumeMultipartUpload(up.r2_key, up.r2_upload_id);
+  const uploaded = await mp.uploadPart(n, body);
+  const r: UploadPart = { partNumber: uploaded.partNumber, etag: uploaded.etag };
+  return c.json(r);
+}
+
+/** Собрать части в один файл и добавить ролик в библиотеку. */
+async function complete(c: Ctx, source: MediaSource): Promise<Response> {
+  const up = await getUpload(c, source);
+  if (!up) return c.json({ error: "Загрузка не найдена или устарела — начните заново" }, 404);
+  const parsed = UploadCompleteInputSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Неверный список частей" }, 400);
+  const parts = [...parsed.data.parts].sort((a, b) => a.partNumber - b.partNumber);
+  if (parts.length !== partsCount(up.size)) return c.json({ error: "Загружены не все части" }, 400);
+
+  const mp = c.env.BUCKET.resumeMultipartUpload(up.r2_key, up.r2_upload_id);
+  const obj = await mp.complete(parts);
+  if (obj.size !== up.size) {
+    await c.env.BUCKET.delete(up.r2_key);
+    return c.json({ error: "Размер файла не совпал — загрузите заново" }, 400);
+  }
+  const row: MediaRow = { id: up.id, r2_key: up.r2_key, name: up.name, size: up.size, mime: up.mime, source: up.source, created_at: Date.now() };
+  await c.env.DB.batch([
+    c.env.DB.prepare("INSERT INTO media (id, r2_key, name, size, mime, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(
+      row.id,
+      row.r2_key,
+      row.name,
+      row.size,
+      row.mime,
+      row.source,
+      row.created_at,
+    ),
+    c.env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(up.id),
+  ]);
+  await audit(c.env.DB, `media ${source}`, up.name);
   const r: UploadResult = { item: toItem(row), duplicate: false };
   return c.json(r);
 }
 
+const migrated: MiddlewareHandler<AppBindings> = async (c, next) => {
+  await ensureMigrated(c.env.DB);
+  await next();
+};
+
 /** Библиотека (только после входа). */
 export const media = new Hono<AppBindings>()
+  .use("*", migrated)
   .get("/", async (c) => {
     const rows = await c.env.DB.prepare(
       "SELECT id, r2_key, name, size, mime, source, created_at FROM media WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500",
     ).all<MediaRow>();
     const items = rows.results.map((r) => toItem(r));
-    const body: MediaList = {
-      items,
-      totalBytes: items.reduce((s, i) => s + i.size, 0),
-      limitBytes: FREE_R2_BYTES,
-    };
+    const body: MediaList = { items, totalBytes: items.reduce((s, i) => s + i.size, 0), limitBytes: FREE_R2_BYTES };
     return c.json(body);
   })
-
-  .post("/upload", (c) => storeVideo(c, c.req.query("name") ?? "", "upload"))
-
+  .post("/uploads", (c) => start(c, "upload"))
+  .put("/uploads/:uploadId/parts/:n", (c) => part(c, "upload"))
+  .post("/uploads/:uploadId/complete", (c) => complete(c, "upload"))
   .delete("/:id", async (c) => {
     const id = c.req.param("id");
     const row = await c.env.DB.prepare("SELECT r2_key, name FROM media WHERE id = ? AND deleted_at IS NULL")
@@ -111,20 +185,35 @@ export const media = new Hono<AppBindings>()
     return c.json({ ok: true as const });
   });
 
-/**
- * Автозагрузка из папки «Готовое» на Mac (по токену UPLOAD_TOKEN, без входа).
- * Имя файла — в заголовке X-File-Name (base64 UTF-8).
- */
-export const ingest = new Hono<AppBindings>().post("/", async (c) => {
+/** Проверка токена автозагрузки (UPLOAD_TOKEN). */
+const uploadToken: MiddlewareHandler<AppBindings> = async (c, next) => {
   const token = (c.req.header("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   const expected = c.env.UPLOAD_TOKEN?.trim();
   if (!expected || !token || !(await safeEqual(token, expected))) return c.json({ error: "bad token" }, 401);
-  let name = "video.mp4";
-  try {
-    const b = c.req.header("X-File-Name");
-    if (b) name = new TextDecoder().decode(Uint8Array.from(atob(b.trim()), (ch) => ch.charCodeAt(0)));
-  } catch {
-    return c.json({ error: "bad file name" }, 400);
+  await next();
+};
+
+/** Автозагрузка из папки «Готовое» на Mac (по токену, без входа). Те же шаги: start → parts → complete. */
+export const ingest = new Hono<AppBindings>()
+  .use("*", uploadToken)
+  .use("*", migrated)
+  .post("/", (c) => start(c, "gotovoe"))
+  .put("/:uploadId/parts/:n", (c) => part(c, "gotovoe"))
+  .post("/:uploadId/complete", (c) => complete(c, "gotovoe"));
+
+/** Уборка незавершённых загрузок старше суток (cron). */
+export async function cleanupStaleUploads(db: D1Database, bucket: R2Bucket): Promise<number> {
+  const old = await db
+    .prepare("SELECT id, r2_key, r2_upload_id FROM uploads WHERE created_at < ?")
+    .bind(Date.now() - UPLOAD_TTL_MS)
+    .all<{ id: string; r2_key: string; r2_upload_id: string }>();
+  for (const u of old.results) {
+    try {
+      await bucket.resumeMultipartUpload(u.r2_key, u.r2_upload_id).abort();
+    } catch {
+      /* уже нет */
+    }
+    await db.prepare("DELETE FROM uploads WHERE id = ?").bind(u.id).run();
   }
-  return storeVideo(c, name, "gotovoe");
-});
+  return old.results.length;
+}

@@ -6,7 +6,7 @@ import { auth } from "./routes/auth";
 import { requireAuth } from "./middleware/auth";
 import { ensureMigrated } from "./lib/migrate";
 import { cleanupOrphans, serveMedia } from "./services/storage";
-import { ingest, media } from "./routes/media";
+import { cleanupStaleUploads, ingest, media } from "./routes/media";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -54,5 +54,7 @@ export default {
     await ensureMigrated(env.DB);
     const removed = await cleanupOrphans(env.BUCKET, env.DB);
     console.log("cleanup: removed orphan files", removed);
+    const stale = await cleanupStaleUploads(env.DB, env.BUCKET);
+    console.log("cleanup: aborted stale uploads", stale);
   },
 } satisfies ExportedHandler<Env>;

@@ -1,10 +1,12 @@
 import init0001 from "../../migrations/0001_init.sql";
 import auth0002 from "../../migrations/0002_auth.sql";
+import uploads0003 from "../../migrations/0003_uploads.sql";
 
 /** Миграции по порядку. Новую — добавлять в конец, старые не менять. */
 const MIGRATIONS: ReadonlyArray<{ id: number; name: string; sql: string }> = [
   { id: 1, name: "0001_init", sql: init0001 },
   { id: 2, name: "0002_auth", sql: auth0002 },
+  { id: 3, name: "0003_uploads", sql: uploads0003 },
 ];
 
 let applied: Promise<number> | null = null;

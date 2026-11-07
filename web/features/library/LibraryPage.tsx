@@ -55,7 +55,7 @@ export function LibraryPage() {
       const id = crypto.randomUUID();
       setJobs((js) => [{ id, name: file.name, progress: 0, error: null, done: false, duplicate: false }, ...js]);
       if (file.size > MAX_UPLOAD_BYTES) {
-        patch(id, { error: "больше 95 МБ — сожмите ролик" });
+        patch(id, { error: "больше 5 ГБ — сожмите ролик" });
         continue;
       }
       try {
