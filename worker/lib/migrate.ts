@@ -6,6 +6,7 @@ import settings0005 from "../../migrations/0005_settings.sql";
 import orders0006 from "../../migrations/0006_orders.sql";
 import postMedia0007 from "../../migrations/0007_post_media.sql";
 import purge0008 from "../../migrations/0008_purge.sql";
+import cache0009 from "../../migrations/0009_buffer_cache.sql";
 
 /** Миграции по порядку. Новую — добавлять в конец, старые не менять. */
 const MIGRATIONS: ReadonlyArray<{ id: number; name: string; sql: string }> = [
@@ -17,6 +18,7 @@ const MIGRATIONS: ReadonlyArray<{ id: number; name: string; sql: string }> = [
   { id: 6, name: "0006_orders", sql: orders0006 },
   { id: 7, name: "0007_post_media", sql: postMedia0007 },
   { id: 8, name: "0008_purge", sql: purge0008 },
+  { id: 9, name: "0009_buffer_cache", sql: cache0009 },
 ];
 
 let applied: Promise<number> | null = null;

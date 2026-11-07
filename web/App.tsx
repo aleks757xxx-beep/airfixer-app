@@ -4,6 +4,7 @@ import { StatusPage } from "./features/status/StatusPage";
 import { LibraryPage } from "./features/library/LibraryPage";
 import { CalendarPage } from "./features/publish/CalendarPage";
 import { PostsPage } from "./features/publish/PostsPage";
+import { StatsPage } from "./features/publish/StatsPage";
 import { AskClaudeButton, ClaudeToast } from "./features/claude/askClaude";
 
 function Screen({ route }: { route: Route }) {
@@ -14,6 +15,8 @@ function Screen({ route }: { route: Route }) {
       return <LibraryPage />;
     case "posts":
       return <PostsPage />;
+    case "stats":
+      return <StatsPage />;
     case "status":
       return <StatusPage />;
   }
@@ -52,7 +55,7 @@ export function App() {
       {/* Нижнее меню на телефоне */}
       <nav
         aria-label="Разделы"
-        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden dark:border-white/10 dark:bg-ink-deep"
+        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden dark:border-white/10 dark:bg-ink-deep"
       >
         {NAV.map((n) => (
           <a

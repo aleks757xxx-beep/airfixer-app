@@ -1,9 +1,23 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import type { AppBindings } from "../env";
-import { ComposeInputSchema, MovePostInputSchema, PostTextInputSchema, type BufferPostList, type ChannelList } from "../../shared/schemas";
+import { ComposeInputSchema, MovePostInputSchema, PostTextInputSchema, SnippetInputSchema, type SnippetList, type BufferPostList, type ChannelList } from "../../shared/schemas";
 import { audit } from "../middleware/auth";
 import { BufferError } from "../services/buffer";
-import { createPosts, deletePost, editPostText, listChannels, listPosts, movePost, sharePostNow } from "../services/publish";
+import {
+  createPosts,
+  createSnippet,
+  deletePost,
+  deleteSnippet,
+  editPostText,
+  listChannels,
+  listPosts,
+  listSnippets,
+  movePost,
+  postStats,
+  retryPost,
+  sharePostNow,
+  updateSnippet,
+} from "../services/publish";
 import { migrated, uploadToken } from "./media";
 
 type Ctx = Context<AppBindings>;
@@ -27,7 +41,7 @@ function build(author: "owner" | "claude") {
     .use("*", needKey)
     .get("/channels", async (c) => {
       try {
-        const body: ChannelList = { items: await listChannels(apiKey(c) ?? "", c.req.query("fresh") === "1") };
+        const body: ChannelList = { items: await listChannels(apiKey(c) ?? "", c.env.DB, c.req.query("fresh") === "1") };
         return c.json(body);
       } catch (e: unknown) {
         return fail(c, e);
@@ -78,9 +92,63 @@ function build(author: "owner" | "claude") {
       const parsed = PostTextInputSchema.safeParse(await c.req.json().catch(() => null));
       if (!parsed.success) return c.json({ error: "Слишком длинная подпись" }, 400);
       try {
-        const post = await editPostText(apiKey(c) ?? "", c.env.DB, c.req.param("id"), parsed.data.text, parsed.data.title);
+        const post = await editPostText(apiKey(c) ?? "", c.env.DB, c.req.param("id"), parsed.data.text, parsed.data.title, parsed.data.firstComment);
         await audit(c.env.DB, `post text (${author})`, c.req.param("id"));
         return c.json({ post });
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    .post("/posts/:id/retry", async (c) => {
+      try {
+        const post = await retryPost(apiKey(c) ?? "", c.env.DB, c.req.param("id"));
+        await audit(c.env.DB, `post retry (${author})`, c.req.param("id"));
+        return c.json({ post });
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    .get("/stats", async (c) => {
+      const from = Number(c.req.query("from"));
+      const to = Number(c.req.query("to"));
+      if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 93 * 24 * 3600 * 1000) return c.json({ error: "Неверный период" }, 400);
+      try {
+        return c.json(await postStats(apiKey(c) ?? "", c.env.DB, from, to));
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    .get("/snippets", async (c) => {
+      try {
+        const body: SnippetList = { items: await listSnippets(apiKey(c) ?? "", c.env.DB) };
+        return c.json(body);
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    .post("/snippets", async (c) => {
+      const p = SnippetInputSchema.safeParse(await c.req.json().catch(() => null));
+      if (!p.success) return c.json({ error: p.error.issues[0]?.message ?? "Проверьте вставку" }, 400);
+      try {
+        return c.json({ snippet: await createSnippet(apiKey(c) ?? "", c.env.DB, p.data) });
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    .put("/snippets/:id", async (c) => {
+      const p = SnippetInputSchema.safeParse(await c.req.json().catch(() => null));
+      if (!p.success) return c.json({ error: p.error.issues[0]?.message ?? "Проверьте вставку" }, 400);
+      try {
+        await updateSnippet(apiKey(c) ?? "", c.env.DB, c.req.param("id"), p.data);
+        return c.json({ ok: true as const });
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    .delete("/snippets/:id", async (c) => {
+      try {
+        await deleteSnippet(apiKey(c) ?? "", c.env.DB, c.req.param("id"));
+        return c.json({ ok: true as const });
       } catch (e: unknown) {
         return fail(c, e);
       }

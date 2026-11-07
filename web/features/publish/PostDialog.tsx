@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { BufferPost, Channel } from "../../../shared/schemas";
-import { useDeletePost, useEditPostText, useMovePost, useShareNow } from "../../api/publish";
+import { useDeletePost, useEditPostText, useMovePost, useRetryPost, useShareNow } from "../../api/publish";
+import { useMediaList } from "../../api/media";
+import { ComposeDialog } from "./ComposeDialog";
 import { TEXT_LIMITS } from "../../../shared/schemas";
 import { dayKey, formatWhen, fromTb, timeKey } from "../../lib/time";
 import { ServiceBadge, channelLabel } from "./channels";
@@ -20,13 +22,17 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
   const now = useShareNow();
   const del = useDeletePost();
   const editText = useEditPostText();
+  const retry = useRetryPost();
+  const library = useMediaList();
+  const [dup, setDup] = useState(false);
+  const media = post.mediaId ? library.data?.items.find((m) => m.id === post.mediaId) : undefined;
   const [text, setText] = useState(post.text);
   const [editingText, setEditingText] = useState(false);
   const [date, setDate] = useState(post.dueAt ? dayKey(post.dueAt) : dayKey(Date.now() + 86_400_000));
   const [time, setTime] = useState(post.dueAt ? timeKey(post.dueAt) : "19:00");
   const editable = post.status === "scheduled" || post.status === "draft" || post.status === "error";
-  const err = move.error ?? now.error ?? del.error ?? editText.error;
-  const busy = move.isPending || now.isPending || del.isPending || editText.isPending;
+  const err = move.error ?? now.error ?? del.error ?? editText.error ?? retry.error;
+  const busy = move.isPending || now.isPending || del.isPending || editText.isPending || retry.isPending;
   const target = fromTb(date, time);
 
   return (
@@ -47,6 +53,23 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
         </header>
 
         {post.error ? <p className="rounded-lg bg-red-500/15 p-2 text-sm text-red-300">⚠️ {post.error}</p> : null}
+        <div className="flex flex-wrap gap-2">
+          {post.status === "error" ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => retry.mutate(post.id, { onSuccess: onClose })}
+              className="rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40"
+            >
+              {retry.isPending ? "Ставлю…" : "↻ Повторить (в очередь)"}
+            </button>
+          ) : null}
+          {media ? (
+            <button type="button" onClick={() => setDup(true)} className="rounded-full bg-white/10 px-4 py-1.5 text-sm font-bold">
+              ⧉ Дублировать
+            </button>
+          ) : null}
+        </div>
         {post.mediaUrl ? <video src={post.mediaUrl} controls playsInline preload="metadata" className="max-h-[45vh] w-full rounded-xl bg-black" /> : null}
         {editingText ? (
           <div className="space-y-2">
@@ -137,6 +160,16 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
         ) : null}
         {err ? <p className="text-sm text-red-400">{err.message}</p> : null}
       </div>
+      {dup && media ? (
+        <ComposeDialog
+          media={media}
+          preset={{ text: editText.data?.post.text ?? post.text }}
+          onClose={() => {
+            setDup(false);
+            onClose();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -30,6 +30,10 @@ export async function bufferQuery<S extends z.ZodType>(
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(variables ? { query, variables } : { query }),
   });
+  if (res.status === 429) {
+    const wait = Math.max(1, Math.ceil(Number(res.headers.get("Retry-After") ?? "900") / 60));
+    throw new BufferError(`исчерпан лимит запросов к Buffer, попробуйте через ${wait} мин`);
+  }
   const raw: unknown = await res.json().catch(() => null);
   const parsed = GraphQLResponse.safeParse(raw);
   if (!res.ok || !parsed.success || parsed.data.errors?.length) {

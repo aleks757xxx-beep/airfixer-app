@@ -1,8 +1,24 @@
 import { z } from "zod";
-import type { BufferPost, Channel, ComposeInput, ComposeResult, ShareMode } from "../../shared/schemas";
+import type { BufferPost, Channel, ComposeInput, ComposeResult, GoogleButton, ShareMode, Snippet, SnippetInput, StatPost, Stats } from "../../shared/schemas";
 import { BufferError, bufferQuery } from "./buffer";
 
 /** Публикация через Buffer: каналы, посты, создание, перенос, удаление. */
+
+// ---- Кэш в D1: у Buffer лимит 100 запросов / 15 мин и 250 / сутки ----
+async function cached<T>(db: D1Database, key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  const row = await db.prepare("SELECT value, at FROM buffer_cache WHERE key = ?").bind(key).first<{ value: string; at: number }>();
+  if (row && Date.now() - row.at < ttlMs) return JSON.parse(row.value) as T;
+  const value = await load();
+  await db
+    .prepare("INSERT INTO buffer_cache (key, value, at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, at = excluded.at")
+    .bind(key, JSON.stringify(value), Date.now())
+    .run();
+  return value;
+}
+/** После любого изменения постов — сбросить списки (каналы и вставки не трогаем). */
+export async function invalidatePosts(db: D1Database): Promise<void> {
+  await db.prepare("DELETE FROM buffer_cache WHERE key LIKE 'posts:%' OR key LIKE 'stats:%'").run();
+}
 
 let orgCache: { key: string; id: string } | null = null;
 async function organizationId(apiKey: string): Promise<string> {
@@ -27,8 +43,14 @@ const RawChannel = z.object({
 });
 
 let channelsCache: { at: number; items: Channel[] } | null = null;
-export async function listChannels(apiKey: string, fresh = false): Promise<Channel[]> {
+export async function listChannels(apiKey: string, db: D1Database, fresh = false): Promise<Channel[]> {
   if (!fresh && channelsCache && Date.now() - channelsCache.at < 5 * 60_000) return channelsCache.items;
+  if (fresh) await db.prepare("DELETE FROM buffer_cache WHERE key = 'channels'").run();
+  const items = await cached(db, "channels", 10 * 60_000, () => loadChannels(apiKey));
+  channelsCache = { at: Date.now(), items };
+  return items;
+}
+async function loadChannels(apiKey: string): Promise<Channel[]> {
   const org = await organizationId(apiKey);
   const d = await bufferQuery(
     apiKey,
@@ -48,7 +70,6 @@ export async function listChannels(apiKey: string, fresh = false): Promise<Chann
     isDisconnected: c.isDisconnected,
     schedule: c.postingSchedule,
   }));
-  channelsCache = { at: Date.now(), items };
   return items;
 }
 
@@ -134,7 +155,10 @@ async function fetchPosts(apiKey: string, filter: Record<string, unknown>, limit
 }
 
 /** Посты за период (по времени выхода) + черновики без даты. */
-export async function listPosts(apiKey: string, db: D1Database, from: number, to: number): Promise<{ items: BufferPost[]; drafts: BufferPost[] }> {
+export function listPosts(apiKey: string, db: D1Database, from: number, to: number): Promise<{ items: BufferPost[]; drafts: BufferPost[] }> {
+  return cached(db, `posts:${from}:${to}`, 90_000, () => loadPosts(apiKey, db, from, to));
+}
+async function loadPosts(apiKey: string, db: D1Database, from: number, to: number): Promise<{ items: BufferPost[]; drafts: BufferPost[] }> {
   const [ranged, drafts] = await Promise.all([
     fetchPosts(apiKey, { dueAt: { start: new Date(from).toISOString(), end: new Date(to).toISOString() } }, 500),
     fetchPosts(apiKey, { status: ["draft"], dueAtPresence: "missing" }, 100).catch(() => [] as RawPostT[]),
@@ -164,22 +188,36 @@ function modeFields(mode: ShareMode, dueAt?: number): Record<string, unknown> {
   }
 }
 
-/** Настройки поста под каждую сеть: ролик как Reels/Shorts. */
-function metadataFor(service: string, title: string | undefined): Record<string, unknown> | undefined {
+interface MetaOpts {
+  title?: string;
+  firstComment?: string;
+  geotag?: boolean;
+  googleButton?: GoogleButton;
+}
+const TBILISI_GEO = { text: "Tbilisi, Georgia" };
+
+/** Настройки поста под каждую сеть: ролик как Reels/Shorts + первый комментарий, геометка, кнопка Google. */
+function metadataFor(service: string, o: MetaOpts): Record<string, unknown> | undefined {
+  const fc = o.firstComment?.trim() ? { firstComment: o.firstComment.trim() } : {};
   switch (service) {
     case "instagram":
-      return { instagram: { type: "reel", shouldShareToFeed: true } };
+      return { instagram: { type: "reel", shouldShareToFeed: true, ...fc, ...(o.geotag ? { geolocation: TBILISI_GEO } : {}) } };
     case "facebook":
-      return { facebook: { type: "reel" } };
+      return { facebook: { type: "reel", ...fc } };
     case "youtube":
-      return { youtube: { title: title || "AirFixer", categoryId: "26", privacy: "public", madeForKids: false, notifySubscribers: true } };
+      return { youtube: { title: o.title || "AirFixer", categoryId: "26", privacy: "public", madeForKids: false, notifySubscribers: true } };
     case "tiktok":
-      return title ? { tiktok: { title } } : undefined;
+      return o.title ? { tiktok: { title: o.title } } : undefined;
     case "googlebusiness":
-      return { google: { type: "whats_new", ...(title ? { title } : {}) } };
+      return { google: { type: "whats_new", ...(o.title ? { title: o.title } : {}), ...googleDetails(o.googleButton) } };
     default:
       return undefined;
   }
+}
+function googleDetails(b: GoogleButton | undefined): Record<string, unknown> {
+  if (b === "call") return { detailsWhatsNew: { button: "call" } };
+  if (b === "learn_more") return { detailsWhatsNew: { button: "learn_more", link: "https://airfixer.ge" } };
+  return {};
 }
 
 const RESULT_FRAGMENT = `__typename ... on PostActionSuccess { post { ${POST_FIELDS} } } ... on MutationError { message }`;
@@ -192,7 +230,7 @@ export async function createPosts(
   videoUrl: string,
   author: "owner" | "claude",
 ): Promise<ComposeResult> {
-  const channels = await listChannels(apiKey);
+  const channels = await listChannels(apiKey, db);
   const results: ComposeResult["results"] = [];
   for (const t of input.targets) {
     const ch = channels.find((c) => c.id === t.channelId);
@@ -200,26 +238,29 @@ export async function createPosts(
       results.push({ channelId: t.channelId, ok: false, postId: null, error: "Канал не найден в Buffer" });
       continue;
     }
-    const metadata = metadataFor(ch.service, t.title);
-    const variables = {
-      input: {
-        channelId: ch.id,
-        text: t.text,
-        schedulingType: "automatic",
-        needsApproval: false,
-        source: "postfixer",
-        assets: [{ video: { url: videoUrl, ...(t.title ? { metadata: { title: t.title } } : {}) } }],
-        ...(metadata ? { metadata } : {}),
-        ...modeFields(input.mode, input.dueAt),
-      },
+    const opts: MetaOpts = { title: t.title, firstComment: t.firstComment, geotag: input.geotag, googleButton: input.googleButton };
+    const videoMeta = { ...(t.title ? { title: t.title } : {}), ...(input.thumbnailMs !== undefined ? { thumbnailOffset: input.thumbnailMs } : {}) };
+    const build = (o: MetaOpts) => {
+      const metadata = metadataFor(ch.service, o);
+      return {
+        input: {
+          channelId: ch.id,
+          text: t.text,
+          schedulingType: "automatic",
+          needsApproval: false,
+          source: "postfixer",
+          assets: [{ video: { url: videoUrl, ...(Object.keys(videoMeta).length ? { metadata: videoMeta } : {}) } }],
+          ...(metadata ? { metadata } : {}),
+          ...modeFields(input.mode, input.dueAt),
+        },
+      };
     };
+    const send = (variables: Record<string, unknown>) =>
+      bufferQuery(apiKey, `mutation($input: CreatePostInput!) { createPost(input: $input) { ${RESULT_FRAGMENT} } }`, z.object({ createPost: ActionResult }), variables);
     try {
-      const d = await bufferQuery(
-        apiKey,
-        `mutation($input: CreatePostInput!) { createPost(input: $input) { ${RESULT_FRAGMENT} } }`,
-        z.object({ createPost: ActionResult }),
-        variables,
-      );
+      let d = await send(build(opts));
+      // Если Buffer не принял геометку — повторяем без неё, чтобы пост не потерялся
+      if (!d.createPost.post && opts.geotag && /geo|location/i.test(d.createPost.message ?? "")) d = await send(build({ ...opts, geotag: false }));
       const post = d.createPost.post;
       if (!post) {
         results.push({ channelId: ch.id, ok: false, postId: null, error: d.createPost.message ?? d.createPost.__typename });
@@ -234,6 +275,7 @@ export async function createPosts(
       results.push({ channelId: ch.id, ok: false, postId: null, error: e instanceof Error ? e.message.slice(0, 300) : "Ошибка Buffer" });
     }
   }
+  await invalidatePosts(db);
   return { results };
 }
 
@@ -241,6 +283,7 @@ async function oneResult(apiKey: string, db: D1Database, query: string, field: s
   const d = await bufferQuery(apiKey, query, z.record(z.string(), ActionResult), variables);
   const r = d[field];
   if (!r?.post) throw new BufferError(r?.message ?? "Buffer не выполнил действие");
+  await invalidatePosts(db);
   const media = await mediaForPosts(db, [r.post.id]);
   return toPost(r.post, media);
 }
@@ -250,7 +293,13 @@ const CurrentPost = z.object({
     id: z.string(),
     channelService: z.string(),
     text: z.string(),
-    assets: z.array(z.object({ source: z.string(), type: z.string(), video: z.object({ title: z.string().nullable() }).optional() })),
+    assets: z.array(
+      z.object({
+        source: z.string(),
+        type: z.string(),
+        video: z.object({ title: z.string().nullable(), thumbnailOffset: z.number().nullable().optional() }).optional(),
+      }),
+    ),
     metadata: z
       .object({
         __typename: z.string(),
@@ -261,6 +310,8 @@ const CurrentPost = z.object({
         notifySubscribers: z.boolean().nullable().optional(),
         shouldShareToFeed: z.boolean().nullable().optional(),
         firstComment: z.string().nullable().optional(),
+        geolocation: z.object({ id: z.string().nullable(), text: z.string().nullable() }).nullable().optional(),
+        details: z.object({ button: z.string().nullable().optional(), link: z.string().nullable().optional() }).nullable().optional(),
       })
       .nullable(),
   }),
@@ -273,34 +324,45 @@ const CurrentPost = z.object({
 async function fullEditInput(
   apiKey: string,
   id: string,
-  change: { text?: string; title?: string; mode?: string; dueAt?: number },
+  change: { text?: string; title?: string; firstComment?: string; mode?: string; dueAt?: number },
 ): Promise<Record<string, unknown>> {
   const d = await bufferQuery(
     apiKey,
     `query($id: PostId!) { post(input: { id: $id }) { id channelService text
-      assets { source type ... on VideoAsset { video { title } } }
+      assets { source type ... on VideoAsset { video { title thumbnailOffset } } }
       metadata { __typename
         ... on YoutubePostMetadata { title privacy madeForKids notifySubscribers }
         ... on TiktokPostMetadata { title }
-        ... on InstagramPostMetadata { type shouldShareToFeed firstComment }
+        ... on InstagramPostMetadata { type shouldShareToFeed firstComment geolocation { id text } }
         ... on FacebookPostMetadata { type firstComment }
-        ... on GoogleBusinessPostMetadata { type title } } } }`,
+        ... on GoogleBusinessPostMetadata { type title details { ... on GoogleBusinessWhatsNewMetaData { button link } } } } } }`,
     CurrentPost,
     { id },
   );
   const p = d.post;
   const m = p.metadata;
   const title = change.title ?? m?.title ?? p.assets.find((a) => a.video?.title)?.video?.title ?? undefined;
-  const assets = p.assets.map((a) =>
-    a.type === "video" ? { video: { url: a.source, ...(title ? { metadata: { title } } : {}) } } : { image: { url: a.source } },
-  );
+  const assets = p.assets.map((a) => {
+    if (a.type !== "video") return { image: { url: a.source } };
+    const vm = { ...(title ? { title } : {}), ...(typeof a.video?.thumbnailOffset === "number" ? { thumbnailOffset: a.video.thumbnailOffset } : {}) };
+    return { video: { url: a.source, ...(Object.keys(vm).length ? { metadata: vm } : {}) } };
+  });
+  const fcText = change.firstComment !== undefined ? change.firstComment.trim() : (m?.firstComment ?? "");
+  const fc = fcText ? { firstComment: fcText } : {};
   let metadata: Record<string, unknown> | undefined;
   switch (p.channelService) {
     case "instagram":
-      metadata = { instagram: { type: m?.type ?? "reel", shouldShareToFeed: m?.shouldShareToFeed ?? true, ...(m?.firstComment ? { firstComment: m.firstComment } : {}) } };
+      metadata = {
+        instagram: {
+          type: m?.type ?? "reel",
+          shouldShareToFeed: m?.shouldShareToFeed ?? true,
+          ...fc,
+          ...(m?.geolocation?.text || m?.geolocation?.id ? { geolocation: { ...(m.geolocation.id ? { id: m.geolocation.id } : {}), ...(m.geolocation.text ? { text: m.geolocation.text } : {}) } } : {}),
+        },
+      };
       break;
     case "facebook":
-      metadata = { facebook: { type: m?.type ?? "reel", ...(m?.firstComment ? { firstComment: m.firstComment } : {}) } };
+      metadata = { facebook: { type: m?.type ?? "reel", ...fc } };
       break;
     case "youtube":
       metadata = {
@@ -317,7 +379,13 @@ async function fullEditInput(
       metadata = title ? { tiktok: { title } } : undefined;
       break;
     case "googlebusiness":
-      metadata = { google: { type: m?.type ?? "whats_new", ...(title ? { title } : {}) } };
+      metadata = {
+        google: {
+          type: m?.type ?? "whats_new",
+          ...(title ? { title } : {}),
+          ...(m?.details?.button ? { detailsWhatsNew: { button: m.details.button, ...(m.details.link ? { link: m.details.link } : {}) } } : {}),
+        },
+      };
       break;
   }
   return {
@@ -345,8 +413,16 @@ export async function editPostText(
   id: string,
   text: string,
   title?: { service: string; title: string },
+  firstComment?: string,
 ): Promise<BufferPost> {
-  return oneResult(apiKey, db, EDIT, "editPost", { input: await fullEditInput(apiKey, id, { text, ...(title ? { title: title.title } : {}) }) });
+  return oneResult(apiKey, db, EDIT, "editPost", {
+    input: await fullEditInput(apiKey, id, { text, ...(title ? { title: title.title } : {}), ...(firstComment !== undefined ? { firstComment } : {}) }),
+  });
+}
+
+/** Повторить пост с ошибкой — снова в очередь (ближайший слот). */
+export async function retryPost(apiKey: string, db: D1Database, id: string): Promise<BufferPost> {
+  return oneResult(apiKey, db, EDIT, "editPost", { input: await fullEditInput(apiKey, id, { mode: "addToQueue" }) });
 }
 
 /** Опубликовать сейчас. */
@@ -364,4 +440,92 @@ export async function deletePost(apiKey: string, db: D1Database, id: string): Pr
   );
   if (!d.deletePost.id) throw new BufferError(d.deletePost.message ?? "Не удалось удалить");
   await db.prepare("DELETE FROM post_media WHERE buffer_post_id = ?").bind(id).run();
+  await invalidatePosts(db);
+}
+
+// ---- Статистика (Buffer: экспериментально, нужен личный ключ) ----
+const MetricPost = RawPost.extend({
+  metrics: z.array(z.object({ type: z.string(), name: z.string(), value: z.number(), unit: z.string() })).nullable(),
+  metricsUpdatedAt: z.string().nullable(),
+});
+const MetricPage = z.object({
+  posts: z.object({ edges: z.array(z.object({ node: MetricPost })), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
+});
+
+/** Опубликованные посты за период с цифрами (кэш 30 минут). */
+export function postStats(apiKey: string, db: D1Database, from: number, to: number): Promise<Stats> {
+  return cached(db, `stats:${from}:${to}`, 30 * 60_000, async () => {
+    const org = await organizationId(apiKey);
+    const nodes: z.infer<typeof MetricPost>[] = [];
+    let after: string | null = null;
+    for (let page = 0; page < 3; page++) {
+      const d: z.infer<typeof MetricPage> = await bufferQuery(
+        apiKey,
+        `query($org: OrganizationId!, $filter: PostsFiltersInput, $after: String) {
+          posts(first: 100, after: $after, input: { organizationId: $org, filter: $filter, sort: [{ field: dueAt, direction: desc }] }) {
+            edges { node { ${POST_FIELDS} metrics { type name value unit } metricsUpdatedAt } } pageInfo { hasNextPage endCursor } } }`,
+        MetricPage,
+        { org, after, filter: { status: ["sent"], dueAt: { start: new Date(from).toISOString(), end: new Date(to).toISOString() } } },
+      );
+      nodes.push(...d.posts.edges.map((e) => e.node));
+      if (!d.posts.pageInfo.hasNextPage || !d.posts.pageInfo.endCursor) break;
+      after = d.posts.pageInfo.endCursor;
+    }
+    const media = await mediaForPosts(db, nodes.map((n) => n.id));
+    const items: StatPost[] = nodes.map((n) => ({ ...toPost(n, media), metrics: n.metrics ?? [], metricsUpdatedAt: ms(n.metricsUpdatedAt) }));
+    return { items, updatedAt: Date.now() };
+  });
+}
+
+// ---- Вставки (сниппеты Buffer) ----
+const SnippetRaw = z.object({ id: z.string(), name: z.string(), text: z.string() });
+export function listSnippets(apiKey: string, db: D1Database): Promise<Snippet[]> {
+  return cached(db, "snippets", 10 * 60_000, async () => {
+    const org = await organizationId(apiKey);
+    const d = await bufferQuery(
+      apiKey,
+      `query($org: OrganizationId!) { snippets(first: 100, input: { organizationId: $org }) { edges { node { id name text } } } }`,
+      z.object({ snippets: z.object({ edges: z.array(z.object({ node: SnippetRaw })) }) }),
+      { org },
+    );
+    return d.snippets.edges.map((e) => e.node);
+  });
+}
+const dropSnippets = (db: D1Database) => db.prepare("DELETE FROM buffer_cache WHERE key = 'snippets'").run();
+
+export async function createSnippet(apiKey: string, db: D1Database, input: SnippetInput): Promise<Snippet> {
+  const org = await organizationId(apiKey);
+  const d = await bufferQuery(
+    apiKey,
+    `mutation($input: CreateSnippetInput!) { createSnippet(input: $input) { __typename ... on CreateSnippetSuccess { snippet { id name text } } ... on VoidMutationError { message } } }`,
+    z.object({ createSnippet: z.object({ __typename: z.string(), snippet: SnippetRaw.optional(), message: z.string().optional() }) }),
+    { input: { organizationId: org, name: input.name, text: input.text } },
+  );
+  if (!d.createSnippet.snippet) throw new BufferError(d.createSnippet.message ?? "Не удалось сохранить вставку");
+  await dropSnippets(db);
+  return d.createSnippet.snippet;
+}
+
+export async function updateSnippet(apiKey: string, db: D1Database, id: string, input: SnippetInput): Promise<void> {
+  const org = await organizationId(apiKey);
+  const d = await bufferQuery(
+    apiKey,
+    `mutation($input: UpdateSnippetInput!) { updateSnippet(input: $input) { __typename ... on VoidMutationError { message } } }`,
+    z.object({ updateSnippet: z.object({ __typename: z.string(), message: z.string().optional() }) }),
+    { input: { id, organizationId: org, name: input.name, text: input.text } },
+  );
+  if (d.updateSnippet.message) throw new BufferError(d.updateSnippet.message);
+  await dropSnippets(db);
+}
+
+export async function deleteSnippet(apiKey: string, db: D1Database, id: string): Promise<void> {
+  const org = await organizationId(apiKey);
+  const d = await bufferQuery(
+    apiKey,
+    `mutation($input: DeleteSnippetInput!) { deleteSnippet(input: $input) { __typename ... on DeleteSnippetSuccess { id } ... on VoidMutationError { message } } }`,
+    z.object({ deleteSnippet: z.object({ __typename: z.string(), id: z.string().optional(), message: z.string().optional() }) }),
+    { input: { id, organizationId: org } },
+  );
+  if (!d.deleteSnippet.id) throw new BufferError(d.deleteSnippet.message ?? "Не удалось удалить вставку");
+  await dropSnippets(db);
 }

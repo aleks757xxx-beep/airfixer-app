@@ -5,26 +5,33 @@ import {
   ComposeResultSchema,
   OkSchema,
   PostResultSchema,
+  SnippetListSchema,
+  SnippetResultSchema,
+  StatsSchema,
+  type SnippetInput,
+  type SnippetList,
+  type Stats,
   type BufferPostList,
   type ChannelList,
   type ComposeInput,
 } from "../../shared/schemas";
-import { ApiRequestError, apiGet, apiPost } from "./client";
+import { ApiRequestError, apiGet, apiPost, apiPut } from "./client";
 import { ApiErrorSchema } from "../../shared/schemas";
 
 export const channelsKey = ["channels"] as const;
 export const postsKey = ["posts"] as const;
 
 export function useChannels() {
-  return useQuery<ChannelList>({ queryKey: channelsKey, queryFn: () => apiGet("/publish/channels", ChannelListSchema), staleTime: 5 * 60_000 });
+  return useQuery<ChannelList>({ queryKey: channelsKey, queryFn: () => apiGet("/publish/channels", ChannelListSchema), staleTime: 10 * 60_000 });
 }
 
 export function usePosts(from: number, to: number) {
   return useQuery<BufferPostList>({
     queryKey: [...postsKey, from, to],
     queryFn: () => apiGet(`/publish/posts?from=${from}&to=${to}`, BufferPostListSchema),
-    staleTime: 30_000,
-    refetchInterval: 120_000,
+    // У Buffer лимит запросов: обновляем не чаще раза в 2 минуты (сервер ещё и кэширует)
+    staleTime: 120_000,
+    refetchInterval: 10 * 60_000,
   });
 }
 
@@ -47,7 +54,8 @@ export function useMovePost() {
 export function useEditPostText() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, text }: { id: string; text: string }) => apiPost(`/publish/posts/${encodeURIComponent(id)}/text`, PostResultSchema, { text }),
+    mutationFn: ({ id, ...body }: { id: string; text: string; title?: { service: string; title: string }; firstComment?: string }) =>
+      apiPost(`/publish/posts/${encodeURIComponent(id)}/text`, PostResultSchema, body),
     onSettled: () => qc.invalidateQueries({ queryKey: postsKey }),
   });
 }
@@ -71,5 +79,50 @@ export function useDeletePost() {
       throw new ApiRequestError(err.success ? err.data.error : `Ошибка (${res.status})`, res.status);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: postsKey }),
+  });
+}
+
+export function useRetryPost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiPost(`/publish/posts/${encodeURIComponent(id)}/retry`, PostResultSchema),
+    onSettled: () => qc.invalidateQueries({ queryKey: postsKey }),
+  });
+}
+
+export function useStats(from: number, to: number) {
+  return useQuery<Stats>({
+    queryKey: ["stats", from, to],
+    queryFn: () => apiGet(`/publish/stats?from=${from}&to=${to}`, StatsSchema),
+    staleTime: 15 * 60_000,
+    retry: false,
+  });
+}
+
+export const snippetsKey = ["snippets"] as const;
+export function useSnippets() {
+  return useQuery<SnippetList>({ queryKey: snippetsKey, queryFn: () => apiGet("/publish/snippets", SnippetListSchema), staleTime: 10 * 60_000 });
+}
+export function useSaveSnippet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...input }: SnippetInput & { id?: string }) => {
+      if (id) await apiPut(`/publish/snippets/${encodeURIComponent(id)}`, OkSchema, input);
+      else await apiPost("/publish/snippets", SnippetResultSchema, input);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: snippetsKey }),
+  });
+}
+export function useDeleteSnippet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/v2/publish/snippets/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "same-origin" });
+      const data: unknown = await res.json().catch(() => null);
+      if (res.ok && OkSchema.safeParse(data).success) return;
+      const err = ApiErrorSchema.safeParse(data);
+      throw new ApiRequestError(err.success ? err.data.error : `Ошибка (${res.status})`, res.status);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: snippetsKey }),
   });
 }

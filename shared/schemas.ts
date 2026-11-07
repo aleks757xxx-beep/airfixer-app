@@ -245,13 +245,23 @@ export const ComposeTargetSchema = z.object({
   text: z.string().max(POST_TEXT_MAX),
   /** Название (YouTube, TikTok, Google) */
   title: z.string().trim().max(100).optional(),
+  /** Первый комментарий (Instagram, Facebook) */
+  firstComment: z.string().max(2200).optional(),
 });
+export const GoogleButtonSchema = z.enum(["call", "learn_more", "none"]);
+export type GoogleButton = z.infer<typeof GoogleButtonSchema>;
 export const ComposeInputSchema = z
   .object({
     mediaId: z.string().min(1),
     mode: ShareModeSchema,
     dueAt: z.number().int().optional(),
     targets: z.array(ComposeTargetSchema).min(1, "Выберите хотя бы одну соцсеть").max(20),
+    /** Обложка: кадр ролика, мс от начала (Instagram, TikTok) */
+    thumbnailMs: z.number().int().min(0).max(600_000).optional(),
+    /** Геометка Instagram «Тбилиси» */
+    geotag: z.boolean().optional(),
+    /** Кнопка под постом Google */
+    googleButton: GoogleButtonSchema.optional(),
   })
   .refine((v) => v.mode !== "schedule" || (v.dueAt !== undefined && v.dueAt > Date.now() - 60_000), {
     message: "Укажите дату и время в будущем",
@@ -266,6 +276,7 @@ export const PostTextInputSchema = z.object({
   text: z.string().max(POST_TEXT_MAX),
   /** Новое название (YouTube/TikTok) — вместе с сетью поста */
   title: z.object({ service: z.string(), title: z.string().trim().min(1).max(100) }).optional(),
+  firstComment: z.string().max(2200).optional(),
 });
 export const PostResultSchema = z.object({ post: BufferPostSchema });
 
@@ -279,3 +290,20 @@ export const TEXT_LIMITS: Readonly<Record<string, number>> = {
 };
 /** Грузия без перехода на летнее время: UTC+4. */
 export const TBILISI_OFFSET_MS = 4 * 3600 * 1000;
+
+/** Статистика постов (Buffer: экспериментально). */
+export const PostMetricSchema = z.object({ type: z.string(), name: z.string(), value: z.number(), unit: z.string() });
+export type PostMetric = z.infer<typeof PostMetricSchema>;
+export const StatPostSchema = BufferPostSchema.extend({ metrics: z.array(PostMetricSchema), metricsUpdatedAt: z.number().int().nullable() });
+export type StatPost = z.infer<typeof StatPostSchema>;
+export const StatsSchema = z.object({ items: z.array(StatPostSchema), updatedAt: z.number().int() });
+export type Stats = z.infer<typeof StatsSchema>;
+
+/** Вставки (сниппеты Buffer): наборы хэштегов, подвалы с контактами. */
+export const SnippetSchema = z.object({ id: z.string(), name: z.string(), text: z.string() });
+export type Snippet = z.infer<typeof SnippetSchema>;
+export const SnippetListSchema = z.object({ items: z.array(SnippetSchema) });
+export type SnippetList = z.infer<typeof SnippetListSchema>;
+export const SnippetInputSchema = z.object({ name: z.string().trim().min(1, "Название").max(100), text: z.string().trim().min(1, "Текст").max(5000) });
+export type SnippetInput = z.infer<typeof SnippetInputSchema>;
+export const SnippetResultSchema = z.object({ snippet: SnippetSchema });

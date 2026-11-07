@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 /** Простой роутер по #/путь — без лишних библиотек. */
-export type Route = "calendar" | "library" | "posts" | "status";
+export type Route = "calendar" | "library" | "posts" | "stats" | "status";
 
-const ROUTES: ReadonlyArray<Route> = ["calendar", "library", "posts", "status"];
+const ROUTES: ReadonlyArray<Route> = ["calendar", "library", "posts", "stats", "status"];
 
 function parse(hash: string): Route {
   const r = hash.replace(/^#\/?/, "");
@@ -24,5 +24,6 @@ export const NAV: ReadonlyArray<{ route: Route; label: string; icon: string }> =
   { route: "calendar", label: "Календарь", icon: "📅" },
   { route: "library", label: "Библиотека", icon: "🎬" },
   { route: "posts", label: "Посты", icon: "📋" },
+  { route: "stats", label: "Статистика", icon: "📈" },
   { route: "status", label: "Состояние", icon: "⚙️" },
 ];

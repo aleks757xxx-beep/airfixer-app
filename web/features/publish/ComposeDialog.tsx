@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { TEXT_LIMITS, type Channel, type ComposeInput, type ComposeResult, type MediaItem, type ShareMode } from "../../../shared/schemas";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { TEXT_LIMITS, type Channel, type ComposeInput, type ComposeResult, type GoogleButton, type MediaItem, type ShareMode } from "../../../shared/schemas";
 import { useMediaList } from "../../api/media";
-import { useChannels, useCompose } from "../../api/publish";
+import { useChannels, useCompose, useSnippets } from "../../api/publish";
+import { SnippetsDialog } from "./SnippetsDialog";
 import { dayKey, fromTb } from "../../lib/time";
 import { ServiceBadge, channelLabel } from "./channels";
 
@@ -18,23 +19,39 @@ const input =
 const titleFrom = (name: string) => name.replace(/\.[a-z0-9]+$/i, "").replace(/^\d+\s*/, "").slice(0, 100);
 const needsTitle = (s: string) => s === "youtube";
 
+/** Начальные значения при «Дублировать». */
+export interface ComposePreset {
+  text?: string;
+  channelIds?: ReadonlyArray<string>;
+  title?: string;
+}
 interface Props {
   media?: MediaItem;
   presetDate?: string;
+  preset?: ComposePreset;
   onClose: () => void;
 }
 
 /** Окно поста — как «Create Post» в Buffer: ролик, соцсети, подписи по сетям, когда выпустить. */
-export function ComposeDialog({ media, presetDate, onClose }: Props) {
+export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
   const channels = useChannels();
   const library = useMediaList();
   const compose = useCompose();
   const [mediaId, setMediaId] = useState(media?.id ?? "");
-  const [selected, setSelected] = useState<ReadonlyArray<string> | null>(null);
-  const [baseText, setBaseText] = useState("");
+  const [selected, setSelected] = useState<ReadonlyArray<string> | null>(preset?.channelIds ?? null);
+  const [baseText, setBaseText] = useState(preset?.text ?? "");
+  const [firstComment, setFirstComment] = useState("");
+  const [thumbMs, setThumbMs] = useState<number | null>(null);
+  const [duration, setDuration] = useState(0);
+  const [geotag, setGeotag] = useState(true);
+  const [googleButton, setGoogleButton] = useState<GoogleButton>("call");
+  const [snipMenu, setSnipMenu] = useState(false);
+  const [snipManage, setSnipManage] = useState(false);
+  const snippets = useSnippets();
+  const preview = useRef<HTMLVideoElement>(null);
   const [custom, setCustom] = useState<Readonly<Record<string, string>>>({});
   const [tab, setTab] = useState<string>("all");
-  const [title, setTitle] = useState(media ? titleFrom(media.name) : "");
+  const [title, setTitle] = useState(preset?.title ?? (media ? titleFrom(media.name) : ""));
   const [mode, setMode] = useState<ShareMode>(presetDate ? "schedule" : "queue");
   const [date, setDate] = useState(presetDate ?? dayKey(Date.now() + 86_400_000));
   const [time, setTime] = useState("19:00");
@@ -58,6 +75,19 @@ export function ComposeDialog({ media, presetDate, onClose }: Props) {
   const ytMissing = chosenChannels.some((c) => needsTitle(c.service)) && !title.trim();
   const canSend =
     !!mediaId && chosenChannels.length > 0 && tooLong.length === 0 && !ytMissing && (mode !== "schedule" || (dueAt !== null && dueAt > Date.now()));
+  const hasIg = chosenChannels.some((c) => c.service === "instagram");
+  const hasFc = chosenChannels.some((c) => c.service === "instagram" || c.service === "facebook");
+  const hasGoogle = chosenChannels.some((c) => c.service === "googlebusiness");
+  const hasCover = chosenChannels.some((c) => c.service === "instagram" || c.service === "tiktok");
+  /** Вставить текст вставки в открытую вкладку подписи. */
+  function insertSnippet(text: string) {
+    const tc = all.find((c) => c.id === tab);
+    if (tc) {
+      const cur = custom[tc.id] ?? baseText;
+      setCustom({ ...custom, [tc.id]: cur ? `${cur}\n\n${text}` : text });
+    } else setBaseText(baseText ? `${baseText}\n\n${text}` : text);
+    setSnipMenu(false);
+  }
   const modeInfo = MODES.find((m) => m.mode === mode) ?? { mode, label: "", button: "Отправить", hint: "" };
 
   function submit() {
@@ -70,7 +100,11 @@ export function ComposeDialog({ media, presetDate, onClose }: Props) {
         channelId: c.id,
         text: textFor(c),
         ...(needsTitle(c.service) || c.service === "tiktok" ? (title.trim() ? { title: title.trim() } : {}) : {}),
+        ...((c.service === "instagram" || c.service === "facebook") && firstComment.trim() ? { firstComment: firstComment.trim() } : {}),
       })),
+      ...(thumbMs !== null ? { thumbnailMs: thumbMs } : {}),
+      ...(hasIg ? { geotag } : {}),
+      ...(hasGoogle ? { googleButton } : {}),
     };
     compose.mutate(body, { onSuccess: setResult });
   }
@@ -114,7 +148,15 @@ export function ComposeDialog({ media, presetDate, onClose }: Props) {
               {/* Ролик */}
               <div className="flex gap-3">
                 {current ? (
-                  <video src={`${current.url}#t=1`} muted playsInline preload="metadata" className="h-28 w-16 shrink-0 rounded-lg bg-black object-cover" />
+                  <video
+                    ref={preview}
+                    src={`${current.url}#t=1`}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+                    className="h-28 w-16 shrink-0 rounded-lg bg-black object-cover"
+                  />
                 ) : (
                   <div className="flex h-28 w-16 shrink-0 items-center justify-center rounded-lg bg-white/5 text-2xl">🎬</div>
                 )}
@@ -138,6 +180,28 @@ export function ComposeDialog({ media, presetDate, onClose }: Props) {
                   </select>
                 </label>
               </div>
+              {current && hasCover && duration > 0 ? (
+                <label className="block space-y-1 text-sm">
+                  <span className="font-semibold">
+                    Обложка (Instagram, TikTok): {thumbMs === null ? "как решит соцсеть" : `кадр на ${(thumbMs / 1000).toFixed(1)} с`}
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.floor(duration * 10) / 10}
+                    step={0.1}
+                    value={(thumbMs ?? 1000) / 1000}
+                    onChange={(e) => {
+                      const sec = Number(e.target.value);
+                      setThumbMs(Math.round(sec * 1000));
+                      if (preview.current) preview.current.currentTime = sec;
+                    }}
+                    className="w-full accent-brand"
+                    aria-label="Кадр обложки"
+                  />
+                  <span className="block text-xs text-white/45">Двигайте ползунок — кадр показывается слева</span>
+                </label>
+              ) : null}
 
               {/* Соцсети */}
               <div className="space-y-1.5">
@@ -186,6 +250,34 @@ export function ComposeDialog({ media, presetDate, onClose }: Props) {
                     </button>
                   ))}
                 </div>
+                <div className="relative">
+                  <button type="button" onClick={() => setSnipMenu((v) => !v)} className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
+                    # Вставки ▾
+                  </button>
+                  {snipMenu ? (
+                    <div className="absolute left-0 top-full z-10 mt-1 max-h-64 w-72 overflow-y-auto rounded-xl border border-white/10 bg-ink-deep p-1 shadow-xl">
+                      {snippets.isPending ? <p className="p-2 text-xs text-white/50">Загружаю…</p> : null}
+                      {snippets.isError ? <p className="p-2 text-xs text-red-400">{snippets.error.message}</p> : null}
+                      {(snippets.data?.items ?? []).map((sn) => (
+                        <button key={sn.id} type="button" onClick={() => insertSnippet(sn.text)} className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-white/5">
+                          <span className="block text-sm font-semibold">{sn.name}</span>
+                          <span className="line-clamp-1 block text-xs text-white/50">{sn.text}</span>
+                        </button>
+                      ))}
+                      {snippets.data?.items.length === 0 ? <p className="p-2 text-xs text-white/50">Вставок пока нет</p> : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSnipMenu(false);
+                          setSnipManage(true);
+                        }}
+                        className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-brand-light hover:bg-white/5"
+                      >
+                        ⚙ Управлять вставками
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 {tab === "all" || !tabChannel ? (
                   <textarea rows={6} value={baseText} onChange={(e) => setBaseText(e.target.value)} placeholder="Подпись для всех соцсетей" className={input} />
                 ) : (
@@ -221,6 +313,36 @@ export function ComposeDialog({ media, presetDate, onClose }: Props) {
                   <p className="text-xs text-red-400">Слишком длинно для: {tooLong.map((c) => channelLabel(c)).join(", ")}</p>
                 ) : null}
               </div>
+
+              {hasFc ? (
+                <label className="block space-y-1 text-sm">
+                  <span className="font-semibold">Первый комментарий (Instagram, Facebook)</span>
+                  <textarea
+                    rows={2}
+                    value={firstComment}
+                    onChange={(e) => setFirstComment(e.target.value)}
+                    maxLength={2200}
+                    placeholder="Например, хэштеги — так подпись чище"
+                    className={input}
+                  />
+                </label>
+              ) : null}
+              {hasIg ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={geotag} onChange={(e) => setGeotag(e.target.checked)} />
+                  📍 Геометка «Тбилиси» в Instagram
+                </label>
+              ) : null}
+              {hasGoogle ? (
+                <label className="block space-y-1 text-sm">
+                  <span className="font-semibold">Кнопка под постом в Google</span>
+                  <select value={googleButton} onChange={(e) => setGoogleButton(e.target.value as GoogleButton)} className={input}>
+                    <option value="call">📞 Позвонить</option>
+                    <option value="learn_more">Подробнее → airfixer.ge</option>
+                    <option value="none">Без кнопки</option>
+                  </select>
+                </label>
+              ) : null}
 
               {chosenChannels.some((c) => needsTitle(c.service) || c.service === "tiktok") ? (
                 <label className="block space-y-1 text-sm">
@@ -274,6 +396,7 @@ export function ComposeDialog({ media, presetDate, onClose }: Props) {
           </>
         )}
       </div>
+      {snipManage ? <SnippetsDialog onClose={() => setSnipManage(false)} /> : null}
     </div>
   );
 }
