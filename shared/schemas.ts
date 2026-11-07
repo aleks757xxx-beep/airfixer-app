@@ -195,3 +195,82 @@ export const SourcesIndexSchema = z.object({
 });
 export type SourcesIndex = z.infer<typeof SourcesIndexSchema>;
 export const SourcesIndexInputSchema = SourcesIndexSchema.pick({ folders: true });
+
+// ---------- Публикация (Buffer) ----------
+export const ChannelServiceSchema = z.string();
+export const ScheduleDaySchema = z.object({ day: z.string(), times: z.array(z.string()), paused: z.boolean() });
+export const ChannelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  displayName: z.string().nullable(),
+  service: ChannelServiceSchema,
+  avatar: z.string(),
+  timezone: z.string(),
+  isQueuePaused: z.boolean(),
+  isDisconnected: z.boolean(),
+  schedule: z.array(ScheduleDaySchema),
+});
+export type Channel = z.infer<typeof ChannelSchema>;
+export const ChannelListSchema = z.object({ items: z.array(ChannelSchema) });
+export type ChannelList = z.infer<typeof ChannelListSchema>;
+
+export const BufferPostStatusSchema = z.enum(["draft", "error", "needs_approval", "scheduled", "sending", "sent"]);
+export type BufferPostStatus = z.infer<typeof BufferPostStatusSchema>;
+export const BufferPostSchema = z.object({
+  id: z.string(),
+  channelId: z.string(),
+  service: z.string(),
+  status: BufferPostStatusSchema,
+  text: z.string(),
+  dueAt: z.number().int().nullable(),
+  sentAt: z.number().int().nullable(),
+  error: z.string().nullable(),
+  isCustomScheduled: z.boolean(),
+  externalLink: z.string().nullable(),
+  thumbnail: z.string().nullable(),
+  /** Ролик из нашей библиотеки, если пост создан из PostFixer */
+  mediaId: z.string().nullable(),
+  mediaUrl: z.string().nullable(),
+});
+export type BufferPost = z.infer<typeof BufferPostSchema>;
+export const BufferPostListSchema = z.object({ items: z.array(BufferPostSchema), drafts: z.array(BufferPostSchema) });
+export type BufferPostList = z.infer<typeof BufferPostListSchema>;
+
+/** Как выпустить пост — как кнопки Buffer. */
+export const ShareModeSchema = z.enum(["queue", "next", "now", "schedule", "draft"]);
+export type ShareMode = z.infer<typeof ShareModeSchema>;
+export const POST_TEXT_MAX = 5000;
+export const ComposeTargetSchema = z.object({
+  channelId: z.string().min(1).max(100),
+  text: z.string().max(POST_TEXT_MAX),
+  /** Название (YouTube, TikTok, Google) */
+  title: z.string().trim().max(100).optional(),
+});
+export const ComposeInputSchema = z
+  .object({
+    mediaId: z.string().min(1),
+    mode: ShareModeSchema,
+    dueAt: z.number().int().optional(),
+    targets: z.array(ComposeTargetSchema).min(1, "Выберите хотя бы одну соцсеть").max(20),
+  })
+  .refine((v) => v.mode !== "schedule" || (v.dueAt !== undefined && v.dueAt > Date.now() - 60_000), {
+    message: "Укажите дату и время в будущем",
+  });
+export type ComposeInput = z.infer<typeof ComposeInputSchema>;
+export const ComposeResultSchema = z.object({
+  results: z.array(z.object({ channelId: z.string(), ok: z.boolean(), postId: z.string().nullable(), error: z.string().nullable() })),
+});
+export type ComposeResult = z.infer<typeof ComposeResultSchema>;
+export const MovePostInputSchema = z.object({ dueAt: z.number().int() });
+export const PostResultSchema = z.object({ post: BufferPostSchema });
+
+/** Лимиты длины подписи по сетям (для счётчика в окне поста). */
+export const TEXT_LIMITS: Readonly<Record<string, number>> = {
+  instagram: 2200,
+  tiktok: 2200,
+  youtube: 5000,
+  facebook: 5000,
+  googlebusiness: 1500,
+};
+/** Грузия без перехода на летнее время: UTC+4. */
+export const TBILISI_OFFSET_MS = 4 * 3600 * 1000;

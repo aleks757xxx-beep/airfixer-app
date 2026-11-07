@@ -15,11 +15,16 @@ const GraphQLResponse = z.object({
 });
 
 /** Запрос к Buffer GraphQL API; ответ проверяется Zod-схемой. */
-export async function bufferQuery<S extends z.ZodType>(apiKey: string, query: string, schema: S): Promise<z.infer<S>> {
+export async function bufferQuery<S extends z.ZodType>(
+  apiKey: string,
+  query: string,
+  schema: S,
+  variables?: Record<string, unknown>,
+): Promise<z.infer<S>> {
   const res = await fetch(BUFFER_API, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify(variables ? { query, variables } : { query }),
   });
   const raw: unknown = await res.json().catch(() => null);
   const parsed = GraphQLResponse.safeParse(raw);
