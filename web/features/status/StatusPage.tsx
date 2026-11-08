@@ -5,8 +5,8 @@ import { TotpSetupSchema } from "../../../shared/schemas";
 import { apiPost } from "../../api/client";
 import { useHealth } from "../../api/hooks";
 import { useDeletePasskey, useLogout, usePasskeyRegister, usePasskeys } from "../../api/auth";
-import { useSaveSettings, useSettings } from "../../api/settings";
-import { Banner, Button, Icon, ListItem, M3Card, SectionTitle, TextField } from "../../components/m3";
+import { useSaveNotify, useSaveSettings, useSettings, useTestNotify } from "../../api/settings";
+import { Banner, Button, Icon, ListItem, M3Card, SectionTitle, Switch, TextField } from "../../components/m3";
 import type { IconName } from "../../components/m3/icons";
 
 /** «Настройки» (бывшее «Состояние»): проверка системы, вход, Claude, выход. Соцсети — в «Подключениях». */
@@ -166,6 +166,45 @@ function ClaudeSettings() {
   );
 }
 
+/** Уведомления в Telegram от @fixerairbot (в тот же чат, куда пишет CRM). */
+const NOTIFY: ReadonlyArray<{ kind: string; label: string; supporting: string }> = [
+  { kind: "failed", label: "Пост не вышел", supporting: "Соцсеть, причина и кнопка «Открыть в PostFixer»" },
+  { kind: "connection", label: "Подключение сломалось", supporting: "Соцсеть отозвала доступ — нужно войти заново (проверка раз в сутки)" },
+  { kind: "sent", label: "Пост вышел", supporting: "Короткое сообщение со ссылкой на пост" },
+  { kind: "claude", label: "Claude выполнил задание", supporting: "Ответ на задание у ролика, готовый монтаж по заказу" },
+];
+function NotifySettings() {
+  const q = useSettings();
+  const save = useSaveNotify();
+  const test = useTestNotify();
+  const n = q.data?.notify;
+  const off = new Set(n?.off ?? []);
+  const toggle = (kind: string, on: boolean) => {
+    const next = new Set(off);
+    if (on) next.delete(kind);
+    else next.add(kind);
+    save.mutate([...next]);
+  };
+  return (
+    <M3Card className="space-y-1 p-4">
+      <ListItem
+        leading={<Icon name="send" />}
+        headline="Уведомления в Telegram"
+        supporting={n?.connected ? "Приходят от @fixerairbot в ваш чат с ботом (тот же, где пишет CRM)" : "Чат не привязан — попросите Claude подключить"}
+      />
+      {NOTIFY.map((x) => (
+        <Switch key={x.kind} label={x.label} supporting={x.supporting} checked={!off.has(x.kind)} disabled={!n?.connected || save.isPending} onChange={(v) => toggle(x.kind, v)} />
+      ))}
+      <Button variant="tonal" icon="send" disabled={!n?.connected || test.isPending} onClick={() => test.mutate()} className="mt-2">
+        {test.isPending ? "Отправляю…" : "Прислать проверочное"}
+      </Button>
+      {test.isSuccess ? <Banner tone="success">Отправлено — проверьте Telegram</Banner> : null}
+      {test.isError ? <Banner tone="error">{test.error.message}</Banner> : null}
+      {save.isError ? <Banner tone="error">{save.error.message}</Banner> : null}
+    </M3Card>
+  );
+}
+
 export function SettingsPage() {
   const logoutAll = useLogout(true);
   return (
@@ -177,6 +216,8 @@ export function SettingsPage() {
         <PhoneCode />
         <Passkeys />
       </div>
+      <SectionTitle>Уведомления</SectionTitle>
+      <NotifySettings />
       <SectionTitle>Claude</SectionTitle>
       <ClaudeSettings />
       <SectionTitle>Безопасность</SectionTitle>

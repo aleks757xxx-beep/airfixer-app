@@ -128,3 +128,19 @@ export async function sendVideo(
   const msg = await call(token, "sendVideo", fd, z.object({ message_id: z.number(), chat: Chat }));
   return { messageId: msg.message_id, link: messageLink(msg.chat, msg.message_id) };
 }
+
+/** Сообщение в личный чат (уведомления владельцу). Текст — HTML Telegram. */
+export async function sendMessage(token: string, chatId: string, html: string, button?: { text: string; url: string } | null): Promise<void> {
+  await call(
+    token,
+    "sendMessage",
+    {
+      chat_id: chatId,
+      text: html,
+      parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
+      ...(button ? { reply_markup: { inline_keyboard: [[{ text: button.text, url: button.url }]] } } : {}),
+    },
+    z.object({ message_id: z.number() }),
+  );
+}

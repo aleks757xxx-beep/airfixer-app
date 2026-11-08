@@ -37,3 +37,4 @@ hard_drive
 vpn_key
 password
 link
+send

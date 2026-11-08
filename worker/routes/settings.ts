@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppBindings } from "../env";
-import { DEFAULT_CLAUDE_URL, DEFAULT_TG_BUTTON, SettingsInputSchema, type Settings } from "../../shared/schemas";
+import { DEFAULT_CLAUDE_URL, DEFAULT_TG_BUTTON, NotifyInputSchema, SettingsInputSchema, type Settings } from "../../shared/schemas";
+import { notify, notifyConfig } from "../services/notify";
 import { ensureMigrated } from "../lib/migrate";
 import { audit } from "../middleware/auth";
 
@@ -23,8 +24,28 @@ export const settings = new Hono<AppBindings>()
     await next();
   })
   .get("/", async (c) => {
-    const body: Settings = await readSettings(c.env.DB);
+    const cfg = await notifyConfig(c.env);
+    const body: Settings = {
+      ...(await readSettings(c.env.DB)),
+      notify: { connected: !!cfg.chatId && !!c.env.TG_BOT_TOKEN?.trim(), off: Object.entries(cfg.kinds).filter(([, on]) => !on).map(([k]) => k) },
+    };
     return c.json(body);
+  })
+  // Какие уведомления присылать
+  .put("/notify", async (c) => {
+    const p = NotifyInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!p.success) return c.json({ error: "Неверные настройки уведомлений" }, 400);
+    await c.env.DB.prepare(
+      "INSERT INTO app_settings (key, value, updated_at) VALUES ('notify_off', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+      .bind(JSON.stringify(p.data.off), Date.now())
+      .run();
+    return c.json({ ok: true as const });
+  })
+  // Проверочное сообщение
+  .post("/notify/test", async (c) => {
+    const ok = await notify(c.env, "test", "👋 <b>PostFixer</b>: уведомления работают. Сюда будут приходить сообщения о постах и подключениях.");
+    return ok ? c.json({ ok: true as const }) : c.json({ error: "Не удалось отправить — чат не привязан или бот недоступен" }, 502);
   })
   .put("/", async (c) => {
     const parsed = SettingsInputSchema.safeParse(await c.req.json().catch(() => null));

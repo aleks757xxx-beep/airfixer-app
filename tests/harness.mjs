@@ -169,6 +169,13 @@ export function totp(secret, step) {
   const o = h[h.length - 1] & 15;
   return String((((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]) % 1e6).padStart(6, "0");
 }
+/** Зашифровать значение тестовым TOKEN_KEY (как lib/secretbox.ts). */
+export function seal(plain) {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv("aes-256-gcm", Buffer.from(TOKEN_KEY, "base64"), iv);
+  const ct = Buffer.concat([c.update(plain), c.final(), c.getAuthTag()]);
+  return `v1.${iv.toString("base64")}.${ct.toString("base64")}`;
+}
 /** Расшифровать значение, зашифрованное TOKEN_KEY (формат v1.iv.ct). */
 export function openSealed(v) {
   if (!v.startsWith("v1.")) return v;

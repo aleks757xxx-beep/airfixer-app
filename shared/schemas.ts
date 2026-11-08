@@ -129,7 +129,8 @@ export const SettingsSchema = z.object({
   claudeUrl: z.string(),
   tgButtonText: z.string(),
   tgButtonUrl: z.string(),
-  /** Claude берётся за задания сам (задача Claude с запуском по сигналу) */
+  /** Уведомления в Telegram: подключён ли чат и какие виды выключены */
+  notify: z.object({ connected: z.boolean(), off: z.array(z.string()) }).optional(),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 export const SettingsInputSchema = z.object({
@@ -143,6 +144,9 @@ export const SettingsInputSchema = z.object({
     .optional(),
 });
 export type SettingsInput = z.infer<typeof SettingsInputSchema>;
+/** Виды уведомлений в Telegram. */
+export const NotifyKindSchema = z.enum(["failed", "sent", "connection", "claude"]);
+export const NotifyInputSchema = z.object({ off: z.array(NotifyKindSchema).max(4) });
 
 // ---------- Заказы монтажа ----------
 export const OrderStatusSchema = z.enum(["new", "in_work", "draft", "revise", "accepted", "cancelled"]);

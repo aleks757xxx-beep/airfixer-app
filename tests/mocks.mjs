@@ -91,6 +91,7 @@ export function graphMock() {
     if ((m = p.match(/^\/(m_c\d+)$/))) return json({ permalink: `https://instagram.com/reel/${m[1]}` });
     if ((m = p.match(/^\/(p\d)\/video_reels$/))) return json(b.upload_phase === "start" ? { video_id: `v_${m[1]}` } : { success: true });
     if (p.startsWith("/rupload/")) return json({ success: true });
+    if ((m = p.match(/^\/(ig\d|p\d)$/)) && req.method === "GET") return json({ id: m[1] });
     if ((m = p.match(/^\/(v_p\d)$/))) return json({ status: { video_status: "ready", publishing_phase: { status: "complete" } }, permalink_url: "/reel/123" });
     json({ error: { message: `not mocked ${p}` } }, 404);
   });
@@ -110,6 +111,11 @@ export function telegramMock() {
     if (method === "getChat") return ok(chat);
     if (method === "getChatMember") return ok({ status: "administrator", can_post_messages: true });
     if (method === "sendVideo") return ok({ message_id: 42, chat });
+    if (method === "sendMessage") {
+      const b = JSON.parse(body.toString());
+      log.push({ method: "message", chat: String(b.chat_id), text: b.text, button: b.reply_markup?.inline_keyboard?.[0]?.[0] });
+      return ok({ message_id: 43 });
+    }
     json({ ok: false, description: "unknown" }, 404);
   });
 }

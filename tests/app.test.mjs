@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, describe, test } from "node:test";
-import { THREADS_SECRET, openSealed, startStand } from "./harness.mjs";
+import { THREADS_SECRET, openSealed, seal, startStand } from "./harness.mjs";
 
 let s;
 let cookie;
@@ -13,6 +13,8 @@ before(async () => {
 });
 after(() => s?.stop());
 
+/** Уведомления, которые бот прислал владельцу. */
+const messages = () => s.mocks.tg.log.filter((x) => x.method === "message");
 const posts = async () => {
   const now = Date.now();
   const r = await s.api(`/api/v2/ingest/agent/publish/posts?from=${now - 86400000}&to=${now + 86400000}`, { agent: true });
@@ -105,6 +107,21 @@ describe("библиотека", () => {
   });
 });
 
+describe("уведомления в Telegram", () => {
+  test("чат владельца задаётся Claude, проверочное сообщение, выключение видов", async () => {
+    assert.equal((await s.api("/api/v2/ingest/agent/notify-chat", { method: "PUT", agent: true, body: { chatId: "5550001" } })).status, 200);
+    const st = await s.api("/api/v2/settings", { cookie });
+    assert.equal(st.data.notify.connected, true);
+    assert.equal((await s.api("/api/v2/settings/notify/test", { method: "POST", cookie, body: {} })).status, 200);
+    const m = messages().at(-1);
+    assert.equal(m.chat, "5550001");
+    assert.match(m.text, /уведомления работают/);
+    assert.equal((await s.api("/api/v2/settings/notify", { method: "PUT", cookie, body: { off: ["sent"] } })).status, 200);
+    assert.deepEqual((await s.api("/api/v2/settings", { cookie })).data.notify.off, ["sent"]);
+    assert.equal((await s.api("/api/v2/settings/notify", { method: "PUT", cookie, body: { off: [] } })).status, 200);
+  });
+});
+
 describe("подключение и публикация напрямую", () => {
   test("Meta: Facebook-страница и привязанный Instagram", async () => {
     const u = await s.api("/api/v2/ingest/agent/connect/meta/url", { agent: true });
@@ -128,6 +145,10 @@ describe("подключение и публикация напрямую", () =
     assert.equal(p.status, "sent", p.error);
     assert.match(p.externalLink, /instagram\.com\/reel/);
     assert.ok(s.mocks.graph.log.some((x) => /\/comments$/.test(x.p) && x.b.message === "#тбилиси"));
+    await s.tick();
+    const m = messages().find((x) => /Вышло<\/b> — Instagram airfixer\.ge/.test(x.text));
+    assert.ok(m, "уведомление «Вышло»");
+    assert.match(m.button.url, /instagram\.com\/reel/);
   });
 
   test("Facebook Reels", async () => {
@@ -217,6 +238,38 @@ describe("статистика, история, вставки", () => {
     const r = await s.tick("0 3 * * *");
     assert.equal(r.status, 200);
     assert.ok(s.mocks.threads.log.some((x) => x.p === "/refresh_access_token"));
+  });
+});
+
+describe("уведомления о сбоях и работе Claude", () => {
+  test("пост не вышел — сообщение с причиной и кнопкой", async () => {
+    const extra = await s.upload("Удалится.mp4", 12_000);
+    const r = await s.api("/api/v2/ingest/agent/publish/posts", { method: "POST", agent: true, body: { mediaId: extra.id, mode: "now", targets: [{ channelId: "fb:p1", text: "Этот не выйдет" }] } });
+    assert.equal((await s.api(`/api/v2/media/${extra.id}`, { method: "DELETE", cookie })).status, 200);
+    const p = await runUntilSent(r.data.results[0].postId, 2);
+    assert.equal(p.status, "error");
+    await s.tick();
+    const m = messages().find((x) => /Пост не вышел<\/b> — Facebook AirFixer/.test(x.text));
+    assert.ok(m, "уведомление о сбое");
+    assert.match(m.text, /Ролик удалён из библиотеки/);
+    assert.match(m.button.url, /#\/posts$/);
+  });
+
+  test("Claude ответил на задание у ролика", async () => {
+    assert.equal((await s.api(`/api/v2/media/${media.id}/note`, { method: "PUT", cookie, body: { note: "Сделай подпись" } })).status, 200);
+    assert.equal((await s.api(`/api/v2/ingest/tasks/${media.id}`, { method: "POST", agent: true, body: { reply: "Подпись готова" } })).status, 200);
+    await s.tick();
+    assert.ok(messages().some((x) => /Claude выполнил задание<\/b> — ролик «Тест ролик\.mp4»/.test(x.text) && /Подпись готова/.test(x.text)));
+  });
+
+  test("подключение сломалось — сообщение раз в сутки", async () => {
+    s.sql(`UPDATE direct_accounts SET token_enc = '${seal("broken-token")}', token_expires_at = ${Date.now() + 59 * 86400000} WHERE id = 'th:9988'`);
+    await s.tick("0 3 * * *");
+    await s.tick("0 3 * * *");
+    const ms = messages().filter((x) => /Нужно переподключить<\/b> — Threads airfixertbls/.test(x.text));
+    assert.equal(ms.length, 1, "одно сообщение в сутки");
+    assert.match(ms[0].button.url, /#\/connections$/);
+    assert.ok(!messages().some((x) => /переподключить<\/b> — (Instagram|Facebook|YouTube|Telegram)/.test(x.text)), "живые подключения не тревожат");
   });
 });
 

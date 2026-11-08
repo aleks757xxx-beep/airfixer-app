@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { SettingsSchema, type Settings, type SettingsInput } from "../../shared/schemas";
-import { apiGet, apiPut } from "./client";
+import { OkSchema, SettingsSchema, type Settings, type SettingsInput } from "../../shared/schemas";
+import { apiGet, apiPost, apiPut } from "./client";
 
 const settingsKey = ["settings"] as const;
 
@@ -14,4 +14,16 @@ export function useSaveSettings() {
     mutationFn: (s: SettingsInput) => apiPut("/settings", SettingsSchema, s),
     onSuccess: (data) => qc.setQueryData(settingsKey, data),
   });
+}
+
+/** Какие уведомления в Telegram выключены. */
+export function useSaveNotify() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (off: string[]) => apiPut("/settings/notify", OkSchema, { off }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: settingsKey }),
+  });
+}
+export function useTestNotify() {
+  return useMutation({ mutationFn: () => apiPost("/settings/notify/test", OkSchema, {}) });
 }

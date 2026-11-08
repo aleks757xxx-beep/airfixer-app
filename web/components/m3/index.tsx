@@ -255,3 +255,22 @@ export function OverflowMenu({
     </div>
   );
 }
+
+/** Переключатель M3 (вкл/выкл) со строкой текста. */
+export function Switch({ checked, onChange, label, supporting, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; supporting?: string; disabled?: boolean }) {
+  return (
+    <label className={`flex min-h-14 cursor-pointer items-center gap-4 py-2 ${disabled ? "opacity-40" : ""}`}>
+      <div className="min-w-0 flex-1">
+        <div className="type-body-l text-on-surface">{label}</div>
+        {supporting ? <div className="type-body-m text-on-surface-variant">{supporting}</div> : null}
+      </div>
+      <input type="checkbox" role="switch" className="peer sr-only" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <span
+        aria-hidden
+        className={`relative inline-flex h-8 w-13 shrink-0 items-center rounded-full border-2 transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-primary ${checked ? "border-primary bg-primary" : "border-outline bg-surface-container-highest"}`}
+      >
+        <span className={`absolute rounded-full transition-all ${checked ? "left-[22px] size-6 bg-on-primary" : "left-1.5 size-4 bg-outline"}`} />
+      </span>
+    </label>
+  );
+}

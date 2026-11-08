@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { connectAgent } from "./connect";
 import { Hono, type Context } from "hono";
 import type { AppBindings } from "../env";
@@ -204,6 +205,18 @@ export const ordersAgent = new Hono<AppBindings>()
     } catch (e: unknown) {
       return c.json({ error: e instanceof BufferError ? e.message : "Ошибка Buffer" }, 502);
     }
+  })
+  // Для Claude: личный чат владельца с ботом для уведомлений (ID из CRM)
+  .put("/notify-chat", async (c) => {
+    const p = z.object({ chatId: z.string().regex(/^-?\d{5,20}$/) }).safeParse(await c.req.json().catch(() => null));
+    if (!p.success) return c.json({ error: "Неверный ID чата" }, 400);
+    await c.env.DB.prepare(
+      "INSERT INTO app_settings (key, value, updated_at) VALUES ('notify_chat_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+      .bind(p.data.chatId, Date.now())
+      .run();
+    await audit(c.env.DB, "notify chat set (claude)");
+    return c.json({ ok: true as const });
   })
   .put("/sources", async (c) => {
     const p = SourcesIndexInputSchema.safeParse(await c.req.json().catch(() => null));

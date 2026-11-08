@@ -20,6 +20,7 @@ import { connect, connectCallback } from "./routes/connect";
 import { collectDirectMetrics, processDirectQueue, refreshThreadsTokens } from "./services/direct";
 import { archiveBufferHistory } from "./services/history";
 import { seal } from "./lib/secretbox";
+import { checkConnections, notifyBufferPosts, notifyClaudeWork, notifyDirectPosts } from "./services/notify";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -91,6 +92,10 @@ export default {
       if (n) console.log("direct queue: processed", n);
       const m = await collectDirectMetrics(env).catch((e: unknown) => (console.error("metrics", e), 0));
       if (m) console.log("metrics: updated", m);
+      // уведомления владельцу: посты, работа Claude; раз в час — посты Buffer
+      await notifyDirectPosts(env).catch((e: unknown) => console.error("notify posts", e));
+      await notifyClaudeWork(env).catch((e: unknown) => console.error("notify claude", e));
+      if (new Date().getUTCMinutes() === 7) await notifyBufferPosts(env).catch((e: unknown) => console.error("notify buffer", e));
       return;
     }
     const removed = await cleanupOrphans(env.BUCKET, env.DB);
@@ -110,6 +115,8 @@ export default {
     }
     const refreshed = await refreshThreadsTokens(env).catch((e: unknown) => (console.error("threads refresh", e), 0));
     if (refreshed) console.log("threads: tokens refreshed", refreshed);
+    const broken = await checkConnections(env).catch((e: unknown) => (console.error("check connections", e), []));
+    if (broken.length) console.log("connections broken", broken.join("; "));
     // копия свежих постов Buffer с цифрами (Buffer стирает историю при отключении канала)
     const key = env.BUFFER_API_KEY?.trim();
     if (key) {

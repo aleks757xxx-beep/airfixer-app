@@ -271,3 +271,8 @@ export async function fbReelInsights(videoId: string, token: string): Promise<Re
   if (typeof so.SHARE === "number") out.shares = so.SHARE;
   return out;
 }
+
+/** Проверка подключения: объект (страница или Instagram) открывается этим ключом. */
+export async function metaObject(id: string, token: string): Promise<void> {
+  await graph("GET", `/${id}`, { fields: "id", access_token: token }, z.object({ id: z.string() }));
+}
