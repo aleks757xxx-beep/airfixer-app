@@ -69,6 +69,8 @@ export const META_APP_ID_DEFAULT = "2206384923628133";
  */
 /** Портфолио AirFixer в Meta Business (не секрет). */
 export const META_BUSINESS_ID_DEFAULT = "800079823197659";
+/** Instagram портфолио AirFixer без своей Страницы (ID из Meta Business Suite; не секрет). */
+export const META_IG_KNOWN_IDS: readonly string[] = ["17841468340186400"]; // airfixertbls
 export const META_IG_CONFIG_ID_DEFAULT = "1113099151566981"; // «Instagram API (единый вход)», создана 08.11.2026
 
 /** Вход через Facebook для компаний: права задаются конфигурацией (config_id). */
@@ -221,6 +223,8 @@ export async function assignedInstagramAccounts(
       errors.push(`businesses: ${e instanceof Error ? e.message : String(e)}`);
     }
     if (!businesses.size) businesses.add(META_BUSINESS_ID_DEFAULT);
+    // Известные Instagram портфолио AirFixer: проверяем, открывает ли их ключ напрямую
+    for (const id of META_IG_KNOWN_IDS) ids.add(id);
     // Instagram из портфолио, к которым у ключа есть доступ
     for (const biz of businesses) {
       for (const edge of ["instagram_business_accounts", "owned_instagram_accounts", "client_instagram_assets"]) {
