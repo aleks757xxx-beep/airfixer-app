@@ -1,5 +1,5 @@
 import type { BufferPost, Channel, ComposeInput, ComposeResult } from "../../shared/schemas";
-import { TBILISI_OFFSET_MS, TEXT_LIMITS, TG_MAX_BYTES } from "../../shared/schemas";
+import { TBILISI_OFFSET_MS, TEXT_LIMITS, TG_MAX_BYTES, textLength } from "../../shared/schemas";
 import type { Env } from "../env";
 import { open, seal } from "../lib/secretbox";
 import {
@@ -13,6 +13,7 @@ import {
   type MetaPage,
 } from "./meta";
 import { TelegramError, sendVideo, type TgChat } from "./telegram";
+import { THREADS_TOKEN_TTL_MS, ThreadsError, refreshThreadsToken, threadsContainerStatus, threadsCreateVideo, threadsPublish } from "./threads";
 import { YT_CHUNK, YoutubeError, refreshGoogleToken, startUpload, uploadChunk, uploadState, youtubeLink, youtubeTitle } from "./youtube";
 import { readSettings } from "../routes/settings";
 
@@ -171,6 +172,45 @@ export async function saveYoutubeChannel(
     .run();
 }
 
+/** Сохранить Threads после входа (долгий ключ — зашифрован, срок — token_expires_at). Слоты — как у Instagram с тем же именем. */
+export async function saveThreadsAccount(env: Env, acc: { userId: string; username: string; token: string; expiresAt: number }): Promise<void> {
+  const id = `th:${acc.userId}`;
+  const hidden = new Set(await hiddenIds(env.DB));
+  if (hidden.delete(id)) {
+    await env.DB.prepare("UPDATE app_settings SET value = ?, updated_at = ? WHERE key = ?").bind(JSON.stringify([...hidden]), Date.now(), HIDDEN_KEY).run();
+  }
+  const ig = await env.DB.prepare("SELECT slots FROM direct_accounts WHERE service = 'instagram' AND lower(name) = lower(?)").bind(acc.username).first<{ slots: string | null }>();
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO direct_accounts (id, service, name, external_id, page_id, token_enc, token_expires_at, replaces, slots, created_at, updated_at)
+     VALUES (?, 'threads', ?, ?, NULL, ?, ?, NULL, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET name = excluded.name, token_enc = excluded.token_enc, token_expires_at = excluded.token_expires_at, updated_at = excluded.updated_at`,
+  )
+    .bind(id, acc.username, acc.userId, await seal(env.TOKEN_KEY, acc.token), acc.expiresAt, ig?.slots ?? JSON.stringify(DEFAULT_SLOTS), now, now)
+    .run();
+}
+
+/** Раз в сутки: продлить ключи Threads, которым больше недели (иначе через 60 дней доступ пропадёт). */
+export async function refreshThreadsTokens(env: Env): Promise<number> {
+  const rows = await env.DB.prepare("SELECT * FROM direct_accounts WHERE service = 'threads' AND token_expires_at IS NOT NULL AND token_expires_at < ?")
+    .bind(Date.now() + THREADS_TOKEN_TTL_MS - 7 * 86_400_000)
+    .all<AccountRow>();
+  let n = 0;
+  for (const a of rows.results) {
+    if (a.token_expires_at !== null && a.token_expires_at < Date.now()) continue; // истёк — нужен новый вход
+    try {
+      const r = await refreshThreadsToken(await open(env.TOKEN_KEY, a.token_enc));
+      await env.DB.prepare("UPDATE direct_accounts SET token_enc = ?, token_expires_at = ?, updated_at = ? WHERE id = ?")
+        .bind(await seal(env.TOKEN_KEY, r.token), r.expiresAt, Date.now(), a.id)
+        .run();
+      n++;
+    } catch (e: unknown) {
+      console.error("threads refresh", a.id, e);
+    }
+  }
+  return n;
+}
+
 /** Сохранить Instagram после единого входа (без страницы Facebook, page_id пустой). Канал Buffer с тем же именем скрывается («вместо Buffer»). */
 export async function saveInstagramLogin(
   env: Env,
@@ -257,7 +297,7 @@ export async function createDirectPosts(
       continue;
     }
     const limit = TEXT_LIMITS[a.service];
-    if (limit && t.text.length > limit) {
+    if (limit && textLength(a.service, t.text) > limit) {
       out.push({ channelId: a.id, ok: false, postId: null, error: `Подпись длиннее ${limit} знаков` });
       continue;
     }
@@ -391,6 +431,10 @@ async function step(env: Env, p: PostRow): Promise<void> {
     let container: string;
     if (a.service === "instagram") container = await igCreateContainer(a.external_id, token, { videoUrl, caption, thumbMs: p.thumb_ms ?? undefined });
     else if (a.service === "facebook") container = await fbPublishReel(a.external_id, token, videoUrl, caption);
+    else if (a.service === "threads") {
+      if (a.token_expires_at !== null && a.token_expires_at < now) return fail(db, p, "Threads: доступ истёк — нажмите «Подключить Threads» ещё раз");
+      container = await threadsCreateVideo(a.external_id, token, videoUrl, caption);
+    }
     else return fail(db, p, "Эта соцсеть напрямую не поддерживается");
     await db
       .prepare("UPDATE direct_posts SET status = 'processing', container_id = ?, attempts = attempts + 1, updated_at = ? WHERE id = ?")
@@ -416,6 +460,17 @@ async function step(env: Env, p: PostRow): Promise<void> {
         await db.prepare("UPDATE direct_posts SET error = ? WHERE id = ?").bind(`Вышел, но первый комментарий не добавился: ${e instanceof Error ? e.message : ""}`, p.id).run();
       });
     }
+    return;
+  }
+  if (a.service === "threads") {
+    const st = await threadsContainerStatus(p.container_id, token);
+    if (st.status === "ERROR" || st.status === "EXPIRED") return fail(db, p, `Threads не принял ролик${st.message ? `: ${st.message}` : ""}`);
+    if (st.status !== "FINISHED") return;
+    const pub = await threadsPublish(a.external_id, token, p.container_id);
+    await db
+      .prepare("UPDATE direct_posts SET status = 'sent', external_id = ?, external_link = ?, sent_at = ?, error = NULL, updated_at = ? WHERE id = ?")
+      .bind(pub.id, pub.link, now, now, p.id)
+      .run();
     return;
   }
   if (a.service === "facebook") {
@@ -540,7 +595,7 @@ export async function processDirectQueue(env: Env): Promise<number> {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "ошибка";
       // сетевые сбои — повторим на следующей минуте (до 3 попыток), ошибки Meta — сразу показываем
-      if (e instanceof MetaError || e instanceof TelegramError || e instanceof YoutubeError || p.attempts >= 3) await fail(env.DB, p, msg);
+      if (e instanceof MetaError || e instanceof TelegramError || e instanceof YoutubeError || e instanceof ThreadsError || p.attempts >= 3) await fail(env.DB, p, msg);
       else await env.DB.prepare("UPDATE direct_posts SET attempts = attempts + 1 WHERE id = ?").bind(p.id).run();
     }
   }

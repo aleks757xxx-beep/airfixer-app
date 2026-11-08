@@ -14,10 +14,11 @@ import {
   listPages,
   metaLoginUrl,
 } from "../services/meta";
-import { accountToChannel, disconnectAccount, listAccounts, saveInstagramLogin, saveMetaAccounts, saveTelegramChannel, saveYoutubeChannel, setSlots } from "../services/direct";
+import { accountToChannel, disconnectAccount, listAccounts, saveInstagramLogin, saveMetaAccounts, saveTelegramChannel, saveThreadsAccount, saveYoutubeChannel, setSlots } from "../services/direct";
 import { TelegramError, chatByAddress, getMe, recentChannels } from "../services/telegram";
 import { listChannels } from "../services/publish";
 import { YoutubeError, exchangeGoogleCode, googleLoginUrl, myChannels } from "../services/youtube";
+import { THREADS_APP_ID_DEFAULT, ThreadsError, exchangeThreadsCode, threadsLoginUrl, threadsMe } from "../services/threads";
 import { migrated } from "./media";
 
 const STATE_TTL_MS = 10 * 60_000;
@@ -35,6 +36,11 @@ const ytConfigured = (env: { GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: s
   !!(googleClientId(env) && env.GOOGLE_CLIENT_SECRET?.trim() && env.TOKEN_KEY);
 /** ID клиента OAuth в Google Cloud (не секрет; проект PostFixer). */
 const GOOGLE_CLIENT_ID_DEFAULT = "310148509374-32vop8u1otmntakf7tgl0upnfmd16hcg.apps.googleusercontent.com";
+
+/** Threads: свой ID приложения и свой адрес возврата. */
+const thRedirectUri = (url: string) => `https://${new URL(url).host}/api/v2/connect/threads/callback`;
+const threadsAppId = (env: { THREADS_APP_ID?: string }) => env.THREADS_APP_ID?.trim() || THREADS_APP_ID_DEFAULT;
+const thConfigured = (env: { THREADS_APP_SECRET?: string; TOKEN_KEY?: string }) => !!(env.THREADS_APP_SECRET?.trim() && env.TOKEN_KEY);
 
 async function newState(db: D1Database, provider: string): Promise<string> {
   const state = randomToken(24);
@@ -61,7 +67,13 @@ export const connect = new Hono<AppBindings>()
       },
       instagram: { configured: igConfigured(c.env) },
       youtube: { configured: ytConfigured(c.env) },
+      threads: { configured: thConfigured(c.env) },
     });
+  })
+  // Кнопка «Подключить Threads» → вход в Threads
+  .get("/threads/start", async (c) => {
+    if (!thConfigured(c.env)) return c.redirect("/#/connections?connect_error=" + encodeURIComponent("Threads ещё не настроен (THREADS_APP_SECRET)"));
+    return c.redirect(threadsLoginUrl(threadsAppId(c.env), thRedirectUri(c.req.url), await newState(c.env.DB, "threads")));
   })
   // Кнопка «Подключить YouTube» → вход Google
   .get("/youtube/start", async (c) => {
@@ -204,9 +216,51 @@ connectCallback.get("/youtube/callback", async (c) => {
   }
 });
 
+/** Возврат из Threads: долгий ключ → аккаунт Threads. */
+connectCallback.get("/threads/callback", async (c) => {
+  const back = (q: string) => c.redirect(`/#/connections?${q}`);
+  const state = c.req.query("state") ?? "";
+  const code = c.req.query("code");
+  const row = await c.env.DB.prepare("SELECT created_at, provider FROM oauth_states WHERE state = ?").bind(state).first<{ created_at: number; provider: string }>();
+  await c.env.DB.prepare("DELETE FROM oauth_states WHERE state = ?").bind(state).run();
+  if (!row || row.provider !== "threads" || Date.now() - row.created_at > STATE_TTL_MS) {
+    return back("connect_error=" + encodeURIComponent("Ссылка входа устарела — нажмите «Подключить Threads» ещё раз"));
+  }
+  if (!code) return back("connect_error=" + encodeURIComponent(c.req.query("error_description") ?? "Вход в Threads отменён"));
+  const secret = c.env.THREADS_APP_SECRET?.trim();
+  if (!secret) return back("connect_error=" + encodeURIComponent("Не задан THREADS_APP_SECRET"));
+  try {
+    const t = await exchangeThreadsCode(threadsAppId(c.env), secret, thRedirectUri(c.req.url), code);
+    const me = await threadsMe(t.token);
+    await saveThreadsAccount(c.env, { userId: me.id, username: me.username, token: t.token, expiresAt: t.expiresAt });
+    await audit(c.env.DB, "direct connect threads", me.username);
+    return back(`connected=threads&name=${encodeURIComponent(me.username)}`);
+  } catch (e: unknown) {
+    const msg = e instanceof ThreadsError ? e.message : "Ошибка подключения Threads";
+    console.error("threads connect", e);
+    await audit(c.env.DB, "threads connect error", msg.slice(0, 300));
+    return back("connect_error=" + encodeURIComponent(msg));
+  }
+});
+/** Обязательные адреса Meta: «пользователь отключил приложение» и «запрос на удаление данных». */
+connectCallback.post("/threads/uninstall", async (c) => {
+  await audit(c.env.DB, "threads uninstall (meta)", "владелец отключил PostFixer в Threads — подключите заново при необходимости");
+  return c.json({ ok: true as const });
+});
+connectCallback.post("/threads/delete", async (c) => {
+  const code = randomToken(12);
+  await audit(c.env.DB, "threads data deletion (meta)", code);
+  return c.json({ url: `https://${new URL(c.req.url).host}/privacy.html`, confirmation_code: code });
+});
+
 /** Для Claude (по токену): ссылка входа Meta, чтобы подключить аккаунт по просьбе владельца из его браузера. */
 export const connectAgent = new Hono<AppBindings>().get("/:provider/url", async (c) => {
   const provider = c.req.param("provider");
+  if (provider === "threads") {
+    if (!thConfigured(c.env)) return c.json({ error: "Threads ещё не настроен (THREADS_APP_SECRET)" }, 503);
+    await audit(c.env.DB, "connect url (claude)", provider);
+    return c.json({ url: threadsLoginUrl(threadsAppId(c.env), thRedirectUri(c.req.url), await newState(c.env.DB, "threads")) });
+  }
   if (provider === "youtube") {
     if (!ytConfigured(c.env)) return c.json({ error: "YouTube напрямую ещё не настроен (GOOGLE_CLIENT_SECRET)" }, 503);
     await audit(c.env.DB, "connect url (claude)", provider);

@@ -29,6 +29,11 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   /** Только для локальной проверки (заглушка Google) */
   GOOGLE_API_URL?: string;
+  /** Threads: ID приложения Threads (не секрет, по умолчанию из кода) и секрет приложения Threads */
+  THREADS_APP_ID?: string;
+  THREADS_APP_SECRET?: string;
+  /** Только для локальной проверки (заглушка Threads API) */
+  THREADS_API_URL?: string;
 }
 
 export type AppBindings = { Bindings: Env };

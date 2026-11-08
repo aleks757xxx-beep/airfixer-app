@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { TEXT_LIMITS, TG_MAX_BYTES, type Channel, type ComposeInput, type ComposeResult, type GoogleButton, type MediaItem, type ShareMode } from "../../../shared/schemas";
+import { TEXT_LIMITS, TG_MAX_BYTES, textLength, type Channel, type ComposeInput, type ComposeResult, type GoogleButton, type MediaItem, type ShareMode } from "../../../shared/schemas";
 import { useMediaList } from "../../api/media";
 import { useChannels, useCompose, useSnippets } from "../../api/publish";
 import { SnippetsDialog } from "./SnippetsDialog";
@@ -72,7 +72,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
   const textFor = (c: Channel) => custom[c.id] ?? baseText;
   const toggle = (id: string) => setSelected(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id]);
   const dueAt = mode === "schedule" ? fromTb(date, time) : null;
-  const tooLong = chosenChannels.filter((c) => textFor(c).length > (TEXT_LIMITS[c.service] ?? 5000));
+  const tooLong = chosenChannels.filter((c) => textLength(c.service, textFor(c)) > (TEXT_LIMITS[c.service] ?? 5000));
   const ytMissing = chosenChannels.some((c) => needsTitle(c.service)) && !title.trim();
   const canSend =
     !!mediaId && chosenChannels.length > 0 && tooLong.length === 0 && !ytMissing && (mode !== "schedule" || (dueAt !== null && dueAt > Date.now()));
@@ -312,7 +312,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                       </button>
                     ) : null}
                     <span className="block text-right text-xs text-on-surface-variant">
-                      {textFor(tabChannel).length} / {TEXT_LIMITS[tabChannel.service] ?? 5000}
+                      {textLength(tabChannel.service, textFor(tabChannel))} / {TEXT_LIMITS[tabChannel.service] ?? 5000}
                     </span>
                   </div>
                 )}

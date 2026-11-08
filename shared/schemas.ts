@@ -310,7 +310,15 @@ export const TEXT_LIMITS: Readonly<Record<string, number>> = {
   facebook: 5000,
   googlebusiness: 1500,
   telegram: 1024,
+  threads: 500,
 };
+/** Длина подписи так, как её считает сеть: в Threads эмодзи считаются по байтам UTF-8. */
+export function textLength(service: string, text: string): number {
+  if (service !== "threads") return text.length;
+  let n = 0;
+  for (const ch of text) n += /\p{Extended_Pictographic}|\u200d|\ufe0f/u.test(ch) ? new TextEncoder().encode(ch).length : 1;
+  return n;
+}
 /** Боты Telegram принимают ролики до 50 МБ. */
 export const TG_MAX_BYTES = 50 * 1024 * 1024;
 /** Грузия без перехода на летнее время: UTC+4. */
@@ -350,5 +358,6 @@ export const DirectAccountsSchema = z.object({
   telegram: z.object({ configured: z.boolean(), bot: z.string().nullable().optional() }).optional(),
   instagram: z.object({ configured: z.boolean() }).optional(),
   youtube: z.object({ configured: z.boolean() }).optional(),
+  threads: z.object({ configured: z.boolean() }).optional(),
 });
 export type DirectAccounts = z.infer<typeof DirectAccountsSchema>;

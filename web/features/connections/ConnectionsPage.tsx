@@ -24,7 +24,7 @@ import { serviceInfo } from "../publish/channels";
 
 /**
  * «Подключения» — как раздел Channels в Buffer: каждая соцсеть карточкой и сетка «Подключить канал».
- * Напрямую: Instagram, Facebook (Meta), Telegram, YouTube (Google). Через Buffer: TikTok, Google Бизнес.
+ * Напрямую: Instagram, Facebook (Meta), Telegram, YouTube (Google), Threads. Через Buffer: TikTok, Google Бизнес.
  */
 
 const DAY_RU: Record<string, string> = {
@@ -424,6 +424,11 @@ export function ConnectionsPage() {
             Instagram подключён: {params.get("name")}
           </Banner>
         ) : null}
+        {connected === "threads" ? (
+          <Banner tone="success">
+            Threads подключён: {params.get("name")}
+          </Banner>
+        ) : null}
         {connected === "youtube" ? (
           <Banner tone="success">
             YouTube подключён: {params.get("name")}
@@ -579,6 +584,23 @@ export function ConnectionsPage() {
               >
                 Buffer
               </LinkButton>
+            )}
+          </AddTile>
+          <AddTile
+            service="threads"
+            title="Threads"
+            note="Напрямую, вход через Threads"
+          >
+            {direct.data?.threads?.configured ? (
+              <LinkButton
+                variant={accounts.some((a) => a.service === "threads") ? "tonal" : "filled"}
+                icon={accounts.some((a) => a.service === "threads") ? "sync" : "add_link"}
+                href="/api/v2/connect/threads/start"
+              >
+                {accounts.some((a) => a.service === "threads") ? "Заново" : "Подключить"}
+              </LinkButton>
+            ) : (
+              <Chip>Скоро</Chip>
             )}
           </AddTile>
           <AddTile service="tiktok" title="TikTok" note="Только через Buffer">

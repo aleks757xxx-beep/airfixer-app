@@ -15,8 +15,9 @@ import { setBufferApiUrl } from "./services/buffer";
 import { setGraphUrl } from "./services/meta";
 import { setTgApiUrl } from "./services/telegram";
 import { setGoogleApiUrl } from "./services/youtube";
+import { setThreadsApiUrl } from "./services/threads";
 import { connect, connectCallback } from "./routes/connect";
-import { processDirectQueue } from "./services/direct";
+import { processDirectQueue, refreshThreadsTokens } from "./services/direct";
 import { fireRoutine } from "./services/routine";
 
 /**
@@ -34,6 +35,7 @@ api.use("*", async (c, next) => {
   setGraphUrl(c.env.META_GRAPH_URL);
   setTgApiUrl(c.env.TG_API_URL);
   setGoogleApiUrl(c.env.GOOGLE_API_URL);
+  setThreadsApiUrl(c.env.THREADS_API_URL);
   await next();
 });
 // Возврат из Facebook после входа — без cookie (проверка по одноразовому state)
@@ -81,6 +83,7 @@ export default {
     setGraphUrl(env.META_GRAPH_URL);
     setTgApiUrl(env.TG_API_URL);
     setGoogleApiUrl(env.GOOGLE_API_URL);
+    setThreadsApiUrl(env.THREADS_API_URL);
     if (event.cron === "* * * * *") {
       // Каждую минуту: прямые посты (Instagram, Facebook), у которых подошло время
       const n = await processDirectQueue(env);
@@ -92,5 +95,7 @@ export default {
     console.log("cleanup: removed orphan files", removed);
     const stale = await cleanupStaleUploads(env.DB, env.BUCKET);
     console.log("cleanup: aborted stale uploads", stale);
+    const refreshed = await refreshThreadsTokens(env).catch((e: unknown) => (console.error("threads refresh", e), 0));
+    if (refreshed) console.log("threads: tokens refreshed", refreshed);
   },
 } satisfies ExportedHandler<Env>;
