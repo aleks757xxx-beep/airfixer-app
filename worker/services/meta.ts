@@ -67,6 +67,8 @@ export const META_APP_ID_DEFAULT = "2206384923628133";
  * вход через Facebook для компаний с конфигурацией, где выбирается аккаунт Instagram — страница Facebook не нужна.
  * Ключ — бессрочный маркер системного пользователя компании. ID конфигурации не секрет; пусто — кнопка выключена.
  */
+/** Портфолио AirFixer в Meta Business (не секрет). */
+export const META_BUSINESS_ID_DEFAULT = "800079823197659";
 export const META_IG_CONFIG_ID_DEFAULT = "1113099151566981"; // «Instagram API (единый вход)», создана 08.11.2026
 
 /** Вход через Facebook для компаний: права задаются конфигурацией (config_id). */
@@ -193,6 +195,32 @@ export async function assignedInstagramAccounts(
       if (g.scope === "business_management") for (const id of g.target_ids ?? []) businesses.add(id);
     }
     errors.push(`scopes: ${JSON.stringify(dbg.data.granular_scopes ?? []).slice(0, 300)}`);
+    // Кто владелец ключа (системный пользователь портфолио) и его Instagram
+    const List = z.object({ data: z.array(z.object({ id: z.string(), username: z.string().optional(), name: z.string().optional() })) });
+    const me = await graph("GET", "/me", { fields: "id,name", access_token: token }, z.object({ id: z.string(), name: z.string().optional() })).catch((e: unknown) => {
+      errors.push(`me: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    });
+    if (me) {
+      errors.push(`me: ${me.name ?? "?"}=${me.id}`);
+      for (const path of [`/${me.id}/assigned_instagram_accounts`, "/me/instagram_accounts"]) {
+        try {
+          const r = await graph("GET", path, { fields: "id,username", limit: 50, access_token: token }, List);
+          errors.push(`${path.replace(me.id, "me")}: ${r.data.map((x) => `${x.username ?? "?"}=${x.id}`).join(",") || "пусто"}`);
+          for (const x of r.data) ids.add(x.id);
+        } catch (e: unknown) {
+          errors.push(`${path.replace(me.id, "me")}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    }
+    try {
+      const r = await graph("GET", "/me/businesses", { fields: "id,name", limit: 50, access_token: token }, List);
+      errors.push(`businesses: ${r.data.map((x) => `${x.name ?? "?"}=${x.id}`).join(",") || "пусто"}`);
+      for (const x of r.data) businesses.add(x.id);
+    } catch (e: unknown) {
+      errors.push(`businesses: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (!businesses.size) businesses.add(META_BUSINESS_ID_DEFAULT);
     // Instagram из портфолио, к которым у ключа есть доступ
     for (const biz of businesses) {
       for (const edge of ["instagram_business_accounts", "owned_instagram_accounts", "client_instagram_assets"]) {
@@ -204,7 +232,7 @@ export async function assignedInstagramAccounts(
             z.object({ data: z.array(z.object({ id: z.string(), username: z.string().optional() })) }),
           );
           errors.push(`${edge}: ${r.data.map((x) => `${x.username ?? "?"}=${x.id}`).join(",") || "пусто"}`);
-          if (edge === "instagram_business_accounts") for (const x of r.data) ids.add(x.id);
+          for (const x of r.data) ids.add(x.id);
         } catch (e: unknown) {
           errors.push(`${edge}: ${e instanceof Error ? e.message : String(e)}`);
         }

@@ -107,7 +107,7 @@ async function instagramCallback(c: Context<AppBindings>): Promise<Response> {
   try {
     const token = await exchangeBusinessCode(appId(c.env), c.env.META_APP_SECRET ?? "", igRedirectUri(c.req.url), code);
     const found = await assignedInstagramAccounts(token, appId(c.env), c.env.META_APP_SECRET ?? "");
-    if (found.errors.length) await audit(c.env.DB, "instagram connect debug", found.errors.join(" | ").slice(0, 1500));
+    if (found.errors.length) await audit(c.env.DB, "instagram connect debug", found.errors.join(" | ").slice(0, 3000));
     const accounts = found.accounts;
     if (accounts.length === 0) return back("connect_error=" + encodeURIComponent("Не удалось найти Instagram после входа — Claude смотрит журнал"));
     const key = c.env.BUFFER_API_KEY?.trim();
