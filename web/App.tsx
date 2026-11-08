@@ -7,7 +7,8 @@ import { CalendarPage } from "./features/publish/CalendarPage";
 import { PostsPage } from "./features/publish/PostsPage";
 import { StatsPage } from "./features/publish/StatsPage";
 import { ClaudeToast, useAskClaude } from "./features/claude/askClaude";
-import { Icon } from "./components/m3";
+import { Icon, IconButton } from "./components/m3";
+import { reloadApp, useNewVersion } from "./lib/update";
 import { ICONS, type IconName } from "./components/m3/icons";
 
 function Screen({ route }: { route: Route }) {
@@ -54,6 +55,7 @@ export function App() {
   const route = useRoute();
   const ask = useAskClaude();
   const wide = route === "calendar";
+  const newVersion = useNewVersion();
   return (
     <div className="min-h-dvh overflow-x-clip bg-surface pb-20 md:pb-0 md:pl-20">
       {/* Боковая панель (Navigation rail) — компьютер */}
@@ -75,13 +77,15 @@ export function App() {
           🍁
         </span>
         <h1 className="type-title-l ml-3 text-on-surface md:ml-0">{TITLES[route]}</h1>
+        <IconButton icon="refresh" label="Обновить" className="ml-auto" onClick={reloadApp} />
         <button
           type="button"
           onClick={() => ask()}
-          className="state-layer type-label-l ml-auto inline-flex h-10 items-center gap-2 rounded-full bg-primary-container pl-4 pr-5 text-on-primary-container"
+          aria-label="Claude"
+          className="state-layer type-label-l inline-flex h-10 items-center gap-2 rounded-full bg-primary-container px-3 text-on-primary-container sm:pl-4 sm:pr-5"
         >
           <Icon name="chat" size={18} />
-          Claude
+          <span className="hidden sm:inline">Claude</span>
         </button>
         <a
           href="#/settings"
@@ -93,6 +97,17 @@ export function App() {
         </a>
       </header>
       <ClaudeToast />
+      {newVersion ? (
+        <div
+          role="status"
+          className="elevation-3 fixed inset-x-4 bottom-24 z-30 mx-auto flex max-w-md items-center gap-3 rounded-m3s bg-inverse-surface py-2 pl-4 pr-2 text-inverse-on-surface md:bottom-6"
+        >
+          <span className="type-body-m flex-1">Вышла новая версия PostFixer</span>
+          <button type="button" onClick={reloadApp} className="state-layer type-label-l h-10 rounded-full px-3 text-inverse-primary">
+            Обновить
+          </button>
+        </div>
+      ) : null}
 
       <main className={`mx-auto px-4 pb-6 md:px-6 ${wide ? "max-w-7xl" : "max-w-5xl"}`}>
         <ErrorBoundary key={route}>
