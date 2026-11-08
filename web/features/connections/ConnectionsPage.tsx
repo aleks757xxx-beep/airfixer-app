@@ -46,13 +46,15 @@ function Avatar({
   size?: number;
 }) {
   const i = serviceInfo(channel.service);
+  const [broken, setBroken] = useState(false);
   return (
     <span
       className="relative inline-flex shrink-0"
       style={{ width: size, height: size }}
     >
-      {channel.avatar ? (
+      {channel.avatar && !broken ? (
         <img
+          onError={() => setBroken(true)}
           src={channel.avatar}
           alt=""
           className="size-full rounded-full object-cover"
@@ -450,6 +452,28 @@ export function ConnectionsPage() {
       </div>
 
       <SectionTitle>Каналы</SectionTitle>
+      <ul className="type-body-s mb-3 grid gap-x-4 gap-y-1 text-on-surface-variant sm:grid-cols-2">
+        <li className="flex items-center gap-1.5">
+          <Icon name="bolt" size={16} className="text-primary" />
+          Напрямую — PostFixer публикует сам
+        </li>
+        <li className="flex items-center gap-1.5">
+          <Icon name="cloud" size={16} />
+          Buffer — публикуется через Buffer
+        </li>
+        <li className="flex flex-wrap items-center gap-1.5">
+          <Icon name="check_circle_fill" size={16} className="text-success" />
+          работает · <Icon name="lock_fill" size={16} className="text-warning" /> блок — Buffer заблокировал по тарифу
+        </li>
+        <li className="flex items-center gap-1.5">
+          <Icon name="schedule" size={16} />
+          «2 раза в день · 06:08–22:32» — время очереди
+        </li>
+        <li className="flex flex-wrap items-center gap-1.5">
+          <Icon name="link_off" size={16} className="text-error" />
+          отключить · <Icon name="link" size={16} /> кнопка под постом · <Icon name="open_in_new" size={16} /> открыть Buffer
+        </li>
+      </ul>
       {direct.isPending || channels.isPending ? (
         <div className="h-48 animate-pulse rounded-m3m bg-surface-container-high" />
       ) : (
