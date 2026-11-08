@@ -145,3 +145,16 @@ connectCallback.get("/meta/callback", async (c) => {
     return back("connect_error=" + encodeURIComponent(msg));
   }
 });
+
+/** Для Claude (по токену): ссылка входа Meta, чтобы подключить аккаунт по просьбе владельца из его браузера. */
+export const connectAgent = new Hono<AppBindings>().get("/:provider/url", async (c) => {
+  const provider = c.req.param("provider");
+  if (provider !== "meta" && provider !== "instagram") return c.json({ error: "Неизвестная соцсеть" }, 404);
+  if (provider === "instagram" && !igConfigured(c.env)) return c.json({ error: "Единый вход Instagram ещё не настроен" }, 503);
+  const state = randomToken(24);
+  await c.env.DB.prepare("DELETE FROM oauth_states WHERE created_at < ?").bind(Date.now() - STATE_TTL_MS).run();
+  await c.env.DB.prepare("INSERT INTO oauth_states (state, provider, created_at) VALUES (?, ?, ?)").bind(state, provider, Date.now()).run();
+  const url = metaLoginUrl(appId(c.env), redirectUri(c.req.url), state, provider === "instagram" ? igConfigId(c.env) : undefined);
+  await audit(c.env.DB, "connect url (claude)", provider);
+  return c.json({ url });
+});

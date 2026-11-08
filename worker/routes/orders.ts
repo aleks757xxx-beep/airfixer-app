@@ -1,3 +1,4 @@
+import { connectAgent } from "./connect";
 import { wakeClaude } from "../services/routine";
 import { Hono, type Context } from "hono";
 import type { AppBindings } from "../env";
@@ -171,6 +172,7 @@ export const orders = new Hono<AppBindings>()
 export const ordersAgent = new Hono<AppBindings>()
   .use("*", uploadToken)
   .use("*", migrated)
+  .route("/connect", connectAgent)
   // Для Claude: журнал действий (входы, публикации) — разбирать проблемы. Только чтение, без IP.
   .get("/audit", async (c) => {
     const limit = Math.min(Math.max(Number(c.req.query("limit")) || 40, 1), 200);
