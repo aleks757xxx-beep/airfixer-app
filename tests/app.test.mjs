@@ -242,6 +242,37 @@ describe("статистика, история, вставки", () => {
   });
 });
 
+describe("лучшее время", () => {
+  test("«В очередь» ставит пост в лучший час канала (8:00–22:00), карта в статистике", async () => {
+    // 16 прошлых постов Facebook: в 19:00 по Тбилиси — 1000 просмотров за сутки, в 10:00 — 100
+    const day = 86400000;
+    const tb = (daysAgo, hour) => {
+      const d = new Date(Date.now() + 4 * 3600000 - daysAgo * day);
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hour) - 4 * 3600000;
+    };
+    const rows = [];
+    for (let k = 2; k <= 9; k++) {
+      for (const [h, v] of [[19, 1000], [10, 100]]) {
+        const at = tb(k, h);
+        rows.push(`('dp_seed_${k}_${h}', 'fb:p1', '${media.id}', 'старый', ${at}, 'sent', 'owner', ${at}, ${at}, ${at}, ${v}, 'sent')`);
+      }
+    }
+    s.sql(`INSERT INTO direct_posts (id, account_id, media_id, text, due_at, status, author, created_at, updated_at, sent_at, views_24h, notified_status) VALUES ${rows.join(",")}`);
+    const bt = await s.api("/api/v2/ingest/agent/publish/best-times", { agent: true });
+    const fb = bt.data.items.find((i) => i.channelId === "fb:p1");
+    assert.equal(fb.source, "own");
+    assert.equal(fb.best[0].hour, 19, JSON.stringify(fb.best));
+    assert.equal(bt.data.hourFrom, 8);
+    assert.equal(bt.data.hourTo, 22);
+    const r = await s.api("/api/v2/ingest/agent/publish/posts", { method: "POST", agent: true, body: { mediaId: media.id, mode: "queue", targets: [{ channelId: "fb:p1", text: "В очередь" }] } });
+    const id = r.data.results[0].postId;
+    const due = s.sql(`SELECT due_at FROM direct_posts WHERE id = '${id}'`)[0].due_at;
+    assert.equal(new Date(due + 4 * 3600000).getUTCHours(), 19, "лучший час");
+    assert.ok(due > Date.now() && due < Date.now() + 7 * day);
+    s.sql(`DELETE FROM direct_posts WHERE id = '${id}'`);
+  });
+});
+
 describe("уведомления о сбоях и работе Claude", () => {
   test("пост не вышел — сообщение с причиной и кнопкой", async () => {
     const extra = await s.upload("Удалится.mp4", 12_000);

@@ -2,6 +2,7 @@ import type { BufferPost, Channel, ComposeInput, ComposeResult } from "../../sha
 import { TBILISI_OFFSET_MS, TEXT_LIMITS, TG_MAX_BYTES, textLength } from "../../shared/schemas";
 import type { Env } from "../env";
 import { open, seal } from "../lib/secretbox";
+import { bestSlot, isExploreTurn } from "./besttime";
 import {
   MetaError,
   fbPublishReel,
@@ -309,7 +310,16 @@ export async function createDirectPosts(
     else if (input.mode === "now") due = Date.now();
     else {
       const taken = takenByAccount.get(a.id) ?? [];
-      due = await nextSlot(db, a, taken);
+      // «В очередь» — в лучший час по цифрам (каждый 5-й — пробный); «Следующим» и без данных — по слотам
+      let best: number | null = null;
+      if (input.mode === "queue") {
+        const busy = await db
+          .prepare("SELECT due_at FROM direct_posts WHERE account_id = ? AND status IN ('scheduled','processing') AND due_at > ?")
+          .bind(a.id, Date.now() - 3 * 3_600_000)
+          .all<{ due_at: number }>();
+        best = await bestSlot(db, a.id, [...busy.results.map((r) => r.due_at), ...taken], await isExploreTurn(db, a.id));
+      }
+      due = best ?? (await nextSlot(db, a, taken));
       takenByAccount.set(a.id, [...taken, due]);
     }
     const id = `dp_${crypto.randomUUID()}`;
@@ -643,11 +653,12 @@ export async function collectDirectMetrics(env: Env, limit = 3): Promise<number>
     `SELECT p.* FROM direct_posts p JOIN direct_accounts a ON a.id = p.account_id
      WHERE p.status = 'sent' AND a.service != 'telegram' AND p.external_id IS NOT NULL
        AND p.sent_at > ? AND p.sent_at < ?
-       AND (p.metrics_updated_at IS NULL OR (p.sent_at > ? AND p.metrics_updated_at < ?) OR p.metrics_updated_at < ?)
+       AND (p.metrics_updated_at IS NULL OR (p.sent_at > ? AND p.metrics_updated_at < ?) OR p.metrics_updated_at < ?
+            OR (p.views_24h IS NULL AND p.sent_at < ? AND p.sent_at > ? AND p.metrics_updated_at < ?))
      ORDER BY p.metrics_updated_at IS NOT NULL, p.metrics_updated_at LIMIT ?`,
   )
-    .bind(now - 90 * 24 * HOUR, now - HOUR / 2, now - 7 * 24 * HOUR, now - 3 * HOUR, now - 24 * HOUR, limit)
-    .all<PostRow & { metrics_updated_at: number | null }>();
+    .bind(now - 90 * 24 * HOUR, now - HOUR / 2, now - 7 * 24 * HOUR, now - 3 * HOUR, now - 24 * HOUR, now - 24 * HOUR, now - 48 * HOUR, now - HOUR, limit)
+    .all<PostRow & { metrics_updated_at: number | null; views_24h: number | null }>();
   let n = 0;
   for (const p of rows.results) {
     const a = await env.DB.prepare("SELECT * FROM direct_accounts WHERE id = ?").bind(p.account_id).first<AccountRow>();
@@ -669,7 +680,11 @@ export async function collectDirectMetrics(env: Env, limit = 3): Promise<number>
       json = JSON.stringify(list);
       n++;
     }
-    await env.DB.prepare("UPDATE direct_posts SET metrics = COALESCE(?, metrics), metrics_updated_at = ? WHERE id = ?").bind(json, Date.now(), p.id).run();
+    // просмотры за первые сутки — для «лучшего времени» (снимок один раз, в первые 24–48 ч)
+    const v24 = values && p.views_24h === null && p.sent_at !== null && Date.now() - p.sent_at >= 24 * HOUR && Date.now() - p.sent_at < 48 * HOUR ? (values.views ?? null) : null;
+    await env.DB.prepare("UPDATE direct_posts SET metrics = COALESCE(?, metrics), metrics_updated_at = ?, views_24h = COALESCE(views_24h, ?) WHERE id = ?")
+      .bind(json, Date.now(), v24, p.id)
+      .run();
   }
   return n;
 }

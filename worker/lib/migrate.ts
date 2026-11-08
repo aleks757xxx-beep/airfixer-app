@@ -14,6 +14,7 @@ import agentRuns0013 from "../../migrations/0013_agent_runs.sql";
 import history0014 from "../../migrations/0014_history.sql";
 import dropUnused0015 from "../../migrations/0015_drop_unused.sql";
 import notify0016 from "../../migrations/0016_notify.sql";
+import bestTime0017 from "../../migrations/0017_best_time.sql";
 
 /** Миграции по порядку. Новую — добавлять в конец, старые не менять. */
 const MIGRATIONS: ReadonlyArray<{ id: number; name: string; sql: string }> = [
@@ -33,6 +34,7 @@ const MIGRATIONS: ReadonlyArray<{ id: number; name: string; sql: string }> = [
   { id: 14, name: "0014_history", sql: history0014 },
   { id: 15, name: "0015_drop_unused", sql: dropUnused0015 },
   { id: 16, name: "0016_notify", sql: notify0016 },
+  { id: 17, name: "0017_best_time", sql: bestTime0017 },
 ];
 
 let applied: Promise<number> | null = null;

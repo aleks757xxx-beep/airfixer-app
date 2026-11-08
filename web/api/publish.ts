@@ -19,6 +19,8 @@ import {
   type BufferPostList,
   type ChannelList,
   type ComposeInput,
+  BestTimesSchema,
+  type BestTimes,
 } from "../../shared/schemas";
 import { ApiRequestError, apiGet, apiPost, apiPut } from "./client";
 import { ApiErrorSchema } from "../../shared/schemas";
@@ -93,6 +95,11 @@ export function useRetryPost() {
     mutationFn: (id: string) => apiPost(`/publish/posts/${encodeURIComponent(id)}/retry`, PostResultSchema),
     onSettled: () => qc.invalidateQueries({ queryKey: postsKey }),
   });
+}
+
+/** «Лучшее время»: карта день × час по каналам. */
+export function useBestTimes() {
+  return useQuery<BestTimes>({ queryKey: ["best-times"], queryFn: () => apiGet("/publish/best-times", BestTimesSchema), staleTime: 30 * 60_000 });
 }
 
 export function useStats(from: number, to: number) {

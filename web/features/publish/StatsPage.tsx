@@ -2,9 +2,10 @@ import { useMemo, useState } from "react";
 import type { StatPost } from "../../../shared/schemas";
 import { useChannels, useStats } from "../../api/publish";
 import { Card, Skeleton } from "../../components/ui/Card";
-import { DAY_MS, formatDay, tbParts, timeKey } from "../../lib/time";
+import { DAY_MS, formatDay, timeKey } from "../../lib/time";
 import { channelLabel } from "./channels";
 import { ServiceSquare, Thumb } from "./PostCard";
+import { BestTimes } from "./BestTimes";
 
 const PERIODS = [
   { days: 7, label: "7 дней" },
@@ -37,7 +38,6 @@ export function StatsPage() {
   const channels = useChannels();
   const chanById = useMemo(() => new Map((channels.data?.items ?? []).map((c) => [c.id, c])), [channels.data]);
   const items = q.data?.items ?? [];
-  const withMetrics = items.filter((p) => p.metrics.length > 0);
 
   const byChannel = useMemo(() => {
     const m = new Map<string, { posts: number; totals: Record<string, number> }>();
@@ -50,18 +50,6 @@ export function StatsPage() {
     return [...m.entries()];
   }, [items]);
 
-  /** Средние просмотры по часу выхода (Тбилиси) — первые наметки «лучшего времени». */
-  const hours = useMemo(() => {
-    const acc = new Map<number, { sum: number; n: number }>();
-    for (const p of withMetrics) {
-      const at = p.sentAt ?? p.dueAt;
-      if (!at) continue;
-      const h = tbParts(at).hh;
-      const cur = acc.get(h) ?? { sum: 0, n: 0 };
-      acc.set(h, { sum: cur.sum + views(p), n: cur.n + 1 });
-    }
-    return [...acc.entries()].map(([h, v]) => ({ h, avg: v.sum / v.n, n: v.n })).sort((a, b) => b.avg - a.avg);
-  }, [withMetrics]);
 
   const top = [...items].sort((a, b) => views(b) - views(a));
 
@@ -87,6 +75,7 @@ export function StatsPage() {
         </div>
       </div>
       <p className="text-xs text-on-surface-variant">Цифры берутся прямо из соцсетей (TikTok и Google — через Buffer), обновляются раз в несколько часов. Telegram просмотры не отдаёт.</p>
+      <BestTimes />
 
       {q.isPending ? (
         <Skeleton className="h-64" />
@@ -124,18 +113,6 @@ export function StatsPage() {
             })}
           </div>
 
-          {hours.length > 0 ? (
-            <Card title="Когда смотрят лучше (по часу выхода)">
-              <div className="flex flex-wrap gap-2">
-                {hours.slice(0, 6).map((h) => (
-                  <span key={h.h} className="rounded-full bg-surface-container-highest px-3 py-1 text-sm">
-                    <b>{String(h.h).padStart(2, "0")}:00</b> · {fmt(h.avg)} просм. в среднем ({h.n})
-                  </span>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-on-surface-variant">Пока мало данных — точнее станет после десятков постов.</p>
-            </Card>
-          ) : null}
 
           <section className="space-y-2">
             <h2 className="px-1 font-bold">Посты — по просмотрам</h2>

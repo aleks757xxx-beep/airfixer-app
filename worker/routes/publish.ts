@@ -20,6 +20,7 @@ import {
 } from "../services/publish";
 import { migrated, uploadToken } from "./media";
 import { allStats, archiveBufferHistory } from "../services/history";
+import { bestSlot, bestTimes, isExploreTurn } from "../services/besttime";
 import { MetaError } from "../services/meta";
 import { TelegramError } from "../services/telegram";
 import {
@@ -99,8 +100,19 @@ function build(author: "owner" | "claude") {
         const bufferTargets = parsed.data.targets.filter((t) => !isDirectChannel(t.channelId));
         const results = await createDirectPosts(c.env.DB, parsed.data, directTargets, author);
         if (bufferTargets.length) {
-          if (!apiKey(c)) results.push(...bufferTargets.map((t) => ({ channelId: t.channelId, ok: false, postId: null, error: "Нет ключа Buffer" })));
-          else results.push(...(await createPosts(apiKey(c) ?? "", c.env.DB, { ...parsed.data, targets: bufferTargets }, videoUrl, author)).results);
+          const key = apiKey(c);
+          if (!key) results.push(...bufferTargets.map((t) => ({ channelId: t.channelId, ok: false, postId: null, error: "Нет ключа Buffer" })));
+          else if (parsed.data.mode === "queue") {
+            // «В очередь» для TikTok / Google — тоже в лучший час (свободный от других постов канала); нет данных — очередь Buffer
+            const now = Date.now();
+            const planned = await listPosts(key, c.env.DB, now - 3 * 3_600_000, now + 8 * 86_400_000).catch(() => ({ items: [], drafts: [] }));
+            for (const t of bufferTargets) {
+              const busy = planned.items.filter((p) => p.channelId === t.channelId && p.status === "scheduled" && p.dueAt).map((p) => p.dueAt as number);
+              const at = await bestSlot(c.env.DB, t.channelId, busy, await isExploreTurn(c.env.DB, t.channelId));
+              const one = at ? { ...parsed.data, mode: "schedule" as const, dueAt: at, targets: [t] } : { ...parsed.data, targets: [t] };
+              results.push(...(await createPosts(key, c.env.DB, one, videoUrl, author)).results);
+            }
+          } else results.push(...(await createPosts(key, c.env.DB, { ...parsed.data, targets: bufferTargets }, videoUrl, author)).results);
         }
         const result = { results };
         const ok = result.results.filter((r) => r.ok).length;
@@ -142,6 +154,18 @@ function build(author: "owner" | "claude") {
         const post = isDirectPost(id) ? await retryDirect(c.env.DB, id) : await retryPost(apiKey(c) ?? "", c.env.DB, id);
         await audit(c.env.DB, `post retry (${author})`, c.req.param("id"));
         return c.json({ post });
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    // «Лучшее время»: карта день × час по каждому каналу
+    .get("/best-times", async (c) => {
+      try {
+        const accounts = await listAccounts(c.env.DB);
+        const replaced = new Set(accounts.map((a) => a.replaces).filter((x): x is string => !!x));
+        const buffer = apiKey(c) ? await listChannels(apiKey(c) ?? "", c.env.DB).catch(() => []) : [];
+        const channels = [...accounts.map(accountToChannel), ...buffer.filter((b) => !replaced.has(b.id))].map((ch) => ({ id: ch.id, name: ch.displayName || ch.name, service: ch.service }));
+        return c.json(await bestTimes(c.env.DB, channels));
       } catch (e: unknown) {
         return fail(c, e);
       }

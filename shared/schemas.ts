@@ -144,6 +144,28 @@ export const SettingsInputSchema = z.object({
     .optional(),
 });
 export type SettingsInput = z.infer<typeof SettingsInputSchema>;
+/** «Лучшее время»: карта день × час (часы hourFrom…hourTo по Тбилиси) по каждому каналу. */
+export const BestTimesSchema = z.object({
+  hourFrom: z.number().int(),
+  hourTo: z.number().int(),
+  items: z.array(
+    z.object({
+      channelId: z.string(),
+      name: z.string(),
+      service: z.string(),
+      /** Сколько постов канала с цифрами */
+      samples: z.number().int(),
+      /** own — по своим постам, all — по всем каналам (своих мало), none — данных нет */
+      source: z.enum(["own", "all", "none"]),
+      /** [7 дней][часы] — во сколько раз лучше обычного (1 = как обычно) */
+      cells: z.array(z.array(z.number())),
+      /** [7 дней][часы] — сколько постов было в этот час */
+      counts: z.array(z.array(z.number().int())),
+      best: z.array(z.object({ day: z.number().int(), hour: z.number().int() })),
+    }),
+  ),
+});
+export type BestTimes = z.infer<typeof BestTimesSchema>;
 /** Виды уведомлений в Telegram. */
 export const NotifyKindSchema = z.enum(["failed", "sent", "connection", "claude"]);
 export const NotifyInputSchema = z.object({
