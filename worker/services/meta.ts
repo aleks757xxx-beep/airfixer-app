@@ -67,7 +67,7 @@ export const META_APP_ID_DEFAULT = "2206384923628133";
  * вход через Facebook для компаний с конфигурацией, где выбирается аккаунт Instagram — страница Facebook не нужна.
  * Ключ — бессрочный маркер системного пользователя компании. ID конфигурации не секрет; пусто — кнопка выключена.
  */
-export const META_IG_CONFIG_ID_DEFAULT = "";
+export const META_IG_CONFIG_ID_DEFAULT = "1113099151566981"; // «Instagram API (единый вход)», создана 08.11.2026
 
 /** Вход через Facebook для компаний: права задаются конфигурацией (config_id). */
 export function metaLoginUrl(appId: string, redirectUri: string, state: string, configId?: string): string {
