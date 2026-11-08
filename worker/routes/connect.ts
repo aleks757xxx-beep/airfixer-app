@@ -34,7 +34,7 @@ const googleClientId = (env: { GOOGLE_CLIENT_ID?: string }) => env.GOOGLE_CLIENT
 const ytConfigured = (env: { GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; TOKEN_KEY?: string }) =>
   !!(googleClientId(env) && env.GOOGLE_CLIENT_SECRET?.trim() && env.TOKEN_KEY);
 /** ID клиента OAuth в Google Cloud (не секрет; проект PostFixer). */
-const GOOGLE_CLIENT_ID_DEFAULT = "";
+const GOOGLE_CLIENT_ID_DEFAULT = "310148509374-32vop8u1otmntakf7tgl0upnfmd16hcg.apps.googleusercontent.com";
 
 async function newState(db: D1Database, provider: string): Promise<string> {
   const state = randomToken(24);
