@@ -258,10 +258,10 @@ function SecondDeviceCode() {
   }, [uri]);
   return (
     <div className="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
-      <p className="font-semibold">Запасной вход: код проверки</p>
+      <p className="font-semibold">Код проверки на телефоне (как в CRM)</p>
       <p className="text-xs text-white/50">
-        На случай, если Face ID не сработает: вход паролем + 6 цифр из «Паролей». Введите пароль PostFixer — появится QR. Отсканируйте его камерой iPhone →
-        «Добавить код в Пароли» → запись app.airfixer.ge. Ключ никому не показывайте и нажмите «Скрыть» после.
+        Вход: пароль + 6 цифр из «Паролей» — iPhone подставит их сам. Чтобы код появился на iPhone: введите пароль PostFixer → «Показать QR» → наведите камеру
+        iPhone на QR → «Добавить код в Пароли» → запись app.airfixer.ge. Потом нажмите «Скрыть».
       </p>
       {reveal.data ? (
         <>
@@ -395,11 +395,11 @@ export function StatusPage() {
           </li>
         ))}
       </ul>
+      <SecondDeviceCode />
       <PasskeysBlock />
       <DirectConnections />
       <TelegramConnect />
       <BufferPlan />
-      <SecondDeviceCode />
       <ClaudeLinkSetting />
       <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">
         <p className="mb-1 text-xs text-white/45">Если потеряли телефон или вошли с чужого устройства — выйдет со всех устройств, войти можно заново.</p>
