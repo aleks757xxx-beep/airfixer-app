@@ -152,15 +152,58 @@ export async function exchangeBusinessCode(appId: string, appSecret: string, red
   return t.access_token;
 }
 
-/** Аккаунты Instagram, к которым владелец дал доступ при едином входе. */
-export async function assignedInstagramAccounts(token: string): Promise<Array<{ id: string; username: string }>> {
-  const d = await graph(
-    "GET",
-    "/me/assigned_instagram_accounts",
-    { fields: "id,username", limit: 50, access_token: token },
-    z.object({ data: z.array(z.object({ id: z.string(), username: z.string().optional() })) }),
-  );
-  return d.data.map((a) => ({ id: a.id, username: a.username ?? `Instagram ${a.id}` }));
+/**
+ * Аккаунты Instagram, к которым владелец дал доступ при едином входе.
+ * 1) /me/assigned_instagram_accounts; 2) если нельзя — debug_token: granular_scopes.target_ids (id аккаунтов Instagram).
+ * Возвращает и найденные аккаунты, и ошибки (для журнала).
+ */
+export async function assignedInstagramAccounts(
+  token: string,
+  appId: string,
+  appSecret: string,
+): Promise<{ accounts: Array<{ id: string; username: string }>; errors: string[] }> {
+  const errors: string[] = [];
+  try {
+    const d = await graph(
+      "GET",
+      "/me/assigned_instagram_accounts",
+      { fields: "id,username", limit: 50, access_token: token },
+      z.object({ data: z.array(z.object({ id: z.string(), username: z.string().optional() })) }),
+    );
+    if (d.data.length) return { accounts: d.data.map((a) => ({ id: a.id, username: a.username ?? `Instagram ${a.id}` })), errors };
+    errors.push("assigned_instagram_accounts: пусто");
+  } catch (e: unknown) {
+    errors.push(`assigned_instagram_accounts: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  try {
+    const dbg = await graph(
+      "GET",
+      "/debug_token",
+      { input_token: token, access_token: `${appId}|${appSecret}` },
+      z.object({
+        data: z.object({
+          granular_scopes: z.array(z.object({ scope: z.string(), target_ids: z.array(z.string()).optional() })).optional(),
+        }),
+      }),
+    );
+    const ids = new Set<string>();
+    for (const g of dbg.data.granular_scopes ?? []) if (g.scope.startsWith("instagram_")) for (const id of g.target_ids ?? []) ids.add(id);
+    const accounts: Array<{ id: string; username: string }> = [];
+    for (const id of ids) {
+      const u = await graph("GET", `/${id}`, { fields: "id,username", access_token: token }, z.object({ id: z.string(), username: z.string().optional() })).catch(
+        (e: unknown) => {
+          errors.push(`${id}: ${e instanceof Error ? e.message : String(e)}`);
+          return null;
+        },
+      );
+      if (u) accounts.push({ id: u.id, username: u.username ?? `Instagram ${u.id}` });
+    }
+    if (!accounts.length) errors.push(`debug_token: доступ к ${ids.size} аккаунт(ам)`);
+    return { accounts, errors };
+  } catch (e: unknown) {
+    errors.push(`debug_token: ${e instanceof Error ? e.message : String(e)}`);
+    return { accounts: [], errors };
+  }
 }
 
 // ---- Facebook Reels (страница) ----
