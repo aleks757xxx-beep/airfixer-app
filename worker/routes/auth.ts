@@ -17,6 +17,15 @@ import {
   totpConfigured,
   trustDevice,
 } from "../middleware/auth";
+import { open as openSecret, seal } from "../lib/secretbox";
+
+/** Ключ кода проверки хранится зашифрованным (TOKEN_KEY); старый незашифрованный — читается и перешифровывается. */
+async function readTotpSecret(tokenKey: string | undefined, stored: string): Promise<string> {
+  return stored.startsWith("v1.") ? openSecret(tokenKey, stored) : stored;
+}
+async function sealTotpSecret(tokenKey: string | undefined, plain: string): Promise<string> {
+  return tokenKey ? seal(tokenKey, plain) : plain;
+}
 
 const MAX_FAILS = 8; // попыток за окно
 const WINDOW_MS = 15 * 60 * 1000;
@@ -87,8 +96,9 @@ export const auth = new Hono<AppBindings>()
       last_step: number | null;
     }>();
     const configured = Boolean(row?.totp_secret_enc);
-    const secret = configured ? row?.totp_secret_enc ?? null : s.pending_totp;
-    if (!secret) return c.json({ error: "Сначала подключите код" }, 400);
+    const stored = configured ? row?.totp_secret_enc ?? null : s.pending_totp;
+    if (!stored) return c.json({ error: "Сначала подключите код" }, 400);
+    const secret = await readTotpSecret(c.env.TOKEN_KEY, stored);
 
     const step = await verifyTotp(secret, parsed.data.code, configured ? row?.last_step ?? null : null);
     if (step === null) {
@@ -99,11 +109,11 @@ export const auth = new Hono<AppBindings>()
     const now = Date.now();
     await c.env.DB.batch([
       configured
-        ? c.env.DB.prepare("UPDATE auth_settings SET last_step = ? WHERE id = 1").bind(step)
+        ? c.env.DB.prepare("UPDATE auth_settings SET last_step = ?, totp_secret_enc = ? WHERE id = 1").bind(step, await sealTotpSecret(c.env.TOKEN_KEY, secret))
         : c.env.DB.prepare(
             "INSERT INTO auth_settings (id, totp_secret_enc, totp_enabled_at, last_step) VALUES (1, ?, ?, ?) " +
               "ON CONFLICT(id) DO UPDATE SET totp_secret_enc = excluded.totp_secret_enc, totp_enabled_at = excluded.totp_enabled_at, last_step = excluded.last_step",
-          ).bind(secret, now, step),
+          ).bind(await sealTotpSecret(c.env.TOKEN_KEY, secret), now, step),
       c.env.DB.prepare("UPDATE sessions SET mfa_ok = 1, pending_totp = NULL, last_seen = ? WHERE id = ?").bind(now, s.id),
     ]);
     if (parsed.data.trustDevice) await trustDevice(c);
@@ -126,7 +136,8 @@ export const auth = new Hono<AppBindings>()
       return c.json({ error: "Неверный пароль" }, 401);
     }
     await audit(c.env.DB, "totp reveal", "ключ показан для второго устройства");
-    const body: TotpSetup = { secret: row.totp_secret_enc, uri: otpauthUri(row.totp_secret_enc, "Алексей", "PostFixer") };
+    const plain = await readTotpSecret(c.env.TOKEN_KEY, row.totp_secret_enc);
+    const body: TotpSetup = { secret: plain, uri: otpauthUri(plain, "Алексей", "PostFixer") };
     return c.json(body);
   })
 

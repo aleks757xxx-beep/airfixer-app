@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// Без «ускорения» через new Function: строгий CSP запрещает eval (и в браузере, и в Worker)
+z.config({ jitless: true });
+
 /** Общие схемы для Worker и интерфейса. Типы выводятся из схем — один источник правды. */
 
 export const ServiceSchema = z.enum(["instagram", "facebook", "tiktok", "youtube"]);

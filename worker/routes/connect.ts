@@ -239,14 +239,37 @@ connectCallback.get("/threads/callback", async (c) => {
     return back("connect_error=" + encodeURIComponent(msg));
   }
 });
+/** Подпись запроса от Meta (signed_request = подпись.данные, HMAC-SHA256 секретом приложения). Без верной подписи — отказ. */
+async function metaSignedRequest(c: Context<AppBindings>, secret: string | undefined): Promise<{ user_id?: string } | null> {
+  if (!secret) return null;
+  const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+  const sr = typeof form.signed_request === "string" ? form.signed_request : "";
+  const [sig, payload] = sr.split(".");
+  if (!sig || !payload || sr.length > 4096) return null;
+  const b64url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (ch) => ch.charCodeAt(0));
+  try {
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    const ok = await crypto.subtle.verify("HMAC", key, b64url(sig), new TextEncoder().encode(payload));
+    if (!ok) return null;
+    const data: unknown = JSON.parse(new TextDecoder().decode(b64url(payload)));
+    const p = z.object({ user_id: z.union([z.string(), z.number()]).optional() }).safeParse(data);
+    return p.success ? { user_id: p.data.user_id === undefined ? undefined : String(p.data.user_id) } : {};
+  } catch {
+    return null;
+  }
+}
 /** Обязательные адреса Meta: «пользователь отключил приложение» и «запрос на удаление данных». */
 connectCallback.post("/threads/uninstall", async (c) => {
-  await audit(c.env.DB, "threads uninstall (meta)", "владелец отключил PostFixer в Threads — подключите заново при необходимости");
+  const sr = await metaSignedRequest(c, c.env.THREADS_APP_SECRET?.trim());
+  if (!sr) return c.json({ error: "bad signature" }, 400);
+  await audit(c.env.DB, "threads uninstall (meta)", `пользователь ${sr.user_id ?? "?"} отключил PostFixer в Threads — подключите заново при необходимости`);
   return c.json({ ok: true as const });
 });
 connectCallback.post("/threads/delete", async (c) => {
+  const sr = await metaSignedRequest(c, c.env.THREADS_APP_SECRET?.trim());
+  if (!sr) return c.json({ error: "bad signature" }, 400);
   const code = randomToken(12);
-  await audit(c.env.DB, "threads data deletion (meta)", code);
+  await audit(c.env.DB, "threads data deletion (meta)", `${sr.user_id ?? "?"}: ${code}`);
   return c.json({ url: `https://${new URL(c.req.url).host}/privacy.html`, confirmation_code: code });
 });
 

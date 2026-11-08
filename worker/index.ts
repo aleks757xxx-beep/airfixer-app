@@ -19,6 +19,7 @@ import { setThreadsApiUrl } from "./services/threads";
 import { connect, connectCallback } from "./routes/connect";
 import { collectDirectMetrics, processDirectQueue, refreshThreadsTokens } from "./services/direct";
 import { archiveBufferHistory } from "./services/history";
+import { seal } from "./lib/secretbox";
 import { fireRoutine } from "./services/routine";
 
 /**
@@ -98,6 +99,12 @@ export default {
     console.log("cleanup: removed orphan files", removed);
     const stale = await cleanupStaleUploads(env.DB, env.BUCKET);
     console.log("cleanup: aborted stale uploads", stale);
+    // ключ кода проверки — только в зашифрованном виде
+    const t = await env.DB.prepare("SELECT totp_secret_enc AS s FROM auth_settings WHERE id = 1").first<{ s: string | null }>();
+    if (t?.s && !t.s.startsWith("v1.") && env.TOKEN_KEY) {
+      await env.DB.prepare("UPDATE auth_settings SET totp_secret_enc = ? WHERE id = 1").bind(await seal(env.TOKEN_KEY, t.s)).run();
+      console.log("totp secret sealed");
+    }
     const refreshed = await refreshThreadsTokens(env).catch((e: unknown) => (console.error("threads refresh", e), 0));
     if (refreshed) console.log("threads: tokens refreshed", refreshed);
     // копия свежих постов Buffer с цифрами (Buffer стирает историю при отключении канала)

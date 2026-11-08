@@ -29,7 +29,10 @@
   "triggers": { "crons": ["0 3 * * *", "* * * * *"] },
 
   // Адрес приложения
-  "routes": [{ "pattern": "app.airfixer.ge", "custom_domain": true }]
+  "routes": [{ "pattern": "app.airfixer.ge", "custom_domain": true }],
+  // Только свой адрес: служебный *.workers.dev и адреса предпросмотра выключены (меньше лишних входов)
+  "workers_dev": false,
+  "preview_urls": false
 
   // Секреты (Settings → Runtime variables and secrets, тип Secret):
   //   APP_PASSWORD, BUFFER_API_KEY, UPLOAD_TOKEN
