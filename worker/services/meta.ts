@@ -187,7 +187,29 @@ export async function assignedInstagramAccounts(
       }),
     );
     const ids = new Set<string>();
-    for (const g of dbg.data.granular_scopes ?? []) if (g.scope.startsWith("instagram_")) for (const id of g.target_ids ?? []) ids.add(id);
+    const businesses = new Set<string>();
+    for (const g of dbg.data.granular_scopes ?? []) {
+      if (g.scope.startsWith("instagram_")) for (const id of g.target_ids ?? []) ids.add(id);
+      if (g.scope === "business_management") for (const id of g.target_ids ?? []) businesses.add(id);
+    }
+    errors.push(`scopes: ${JSON.stringify(dbg.data.granular_scopes ?? []).slice(0, 300)}`);
+    // Instagram из портфолио, к которым у ключа есть доступ
+    for (const biz of businesses) {
+      for (const edge of ["instagram_business_accounts", "owned_instagram_accounts", "client_instagram_assets"]) {
+        try {
+          const r = await graph(
+            "GET",
+            `/${biz}/${edge}`,
+            { fields: "id,username", limit: 50, access_token: token },
+            z.object({ data: z.array(z.object({ id: z.string(), username: z.string().optional() })) }),
+          );
+          errors.push(`${edge}: ${r.data.map((x) => `${x.username ?? "?"}=${x.id}`).join(",") || "пусто"}`);
+          if (edge === "instagram_business_accounts") for (const x of r.data) ids.add(x.id);
+        } catch (e: unknown) {
+          errors.push(`${edge}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    }
     const accounts: Array<{ id: string; username: string }> = [];
     for (const id of ids) {
       const u = await graph("GET", `/${id}`, { fields: "id,username", access_token: token }, z.object({ id: z.string(), username: z.string().optional() })).catch(

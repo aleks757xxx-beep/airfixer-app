@@ -153,6 +153,9 @@ export async function saveInstagramLogin(
   bufferChannels: ReadonlyArray<Channel>,
 ): Promise<boolean> {
   const id = `ig:${acc.userId}`;
+  // Instagram, уже подключённый через страницу Facebook, не трогаем (у него свой ключ страницы)
+  const existing = await env.DB.prepare("SELECT page_id FROM direct_accounts WHERE id = ?").bind(id).first<{ page_id: string | null }>();
+  if (existing?.page_id) return false;
   const hidden = new Set(await hiddenIds(env.DB));
   hidden.delete(id); // владелец сам вошёл этим аккаунтом — значит, хочет его вернуть
   await env.DB.prepare(
