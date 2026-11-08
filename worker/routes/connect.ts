@@ -15,7 +15,7 @@ import {
   metaLoginUrl,
 } from "../services/meta";
 import { accountToChannel, disconnectAccount, listAccounts, saveInstagramLogin, saveMetaAccounts, saveTelegramChannel, setSlots } from "../services/direct";
-import { TelegramError, chatByAddress, recentChannels } from "../services/telegram";
+import { TelegramError, chatByAddress, getMe, recentChannels } from "../services/telegram";
 import { listChannels } from "../services/publish";
 import { migrated } from "./media";
 
@@ -40,7 +40,10 @@ export const connect = new Hono<AppBindings>()
     return c.json({
       items: accounts.map((a) => ({ ...accountToChannel(a), replaces: a.replaces })),
       meta: { configured: !!(c.env.META_APP_SECRET && c.env.TOKEN_KEY) },
-      telegram: { configured: !!c.env.TG_BOT_TOKEN?.trim() },
+      telegram: {
+        configured: !!c.env.TG_BOT_TOKEN?.trim(),
+        bot: c.env.TG_BOT_TOKEN?.trim() ? await getMe(c.env.TG_BOT_TOKEN.trim()).then((m) => m.username).catch(() => null) : null,
+      },
       instagram: { configured: igConfigured(c.env) },
     });
   })

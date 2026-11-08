@@ -57,13 +57,16 @@ export async function chatByAddress(token: string, address: string): Promise<TgC
 
 async function ensureCanPost(token: string, chatId: number): Promise<void> {
   const me = await getMe(token);
+  const notAdmin = `Telegram: бот @${me.username} ещё не админ этого канала — добавьте в администраторы канала именно его (@${me.username}) и нажмите ещё раз`;
   const m = await call(
     token,
     "getChatMember",
     { chat_id: chatId, user_id: me.id },
     z.object({ status: z.string(), can_post_messages: z.boolean().optional() }),
-  );
-  if (m.status !== "administrator" && m.status !== "creator") throw new TelegramError(`Telegram: бот @${me.username} не админ этого канала — добавьте его в администраторы`);
+  ).catch((e: unknown) => {
+    throw e instanceof TelegramError && /не админ|member list/i.test(e.message) ? new TelegramError(notAdmin) : e;
+  });
+  if (m.status !== "administrator" && m.status !== "creator") throw new TelegramError(notAdmin);
   if (m.can_post_messages === false) throw new TelegramError("Telegram: у бота нет права «Публикация сообщений» в канале");
 }
 
