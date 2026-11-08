@@ -16,6 +16,7 @@ import { setGraphUrl } from "./services/meta";
 import { setTgApiUrl } from "./services/telegram";
 import { connect, connectCallback } from "./routes/connect";
 import { processDirectQueue } from "./services/direct";
+import { fireRoutine } from "./services/routine";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -81,6 +82,7 @@ export default {
       // Каждую минуту: прямые посты (Instagram, Facebook), у которых подошло время
       const n = await processDirectQueue(env);
       if (n) console.log("direct queue: processed", n);
+      if (await fireRoutine(env).catch((e: unknown) => (console.error("routine", e), false))) console.log("claude routine fired");
       return;
     }
     const removed = await cleanupOrphans(env.BUCKET, env.DB);

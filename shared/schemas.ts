@@ -130,7 +130,13 @@ export const ClaudeUrlSchema = z
   .refine((u) => /^https:\/\/claude\.ai\/[A-Za-z0-9._~\/?#=&%-]*$/.test(u), "Ссылка должна начинаться с https://claude.ai/");
 /** Кнопка под постами в Telegram — в бот записи для клиентов (решение владельца 08.11.2026). Пустая ссылка — без кнопки. */
 export const DEFAULT_TG_BUTTON = { text: "📅 Записаться", url: "https://t.me/fixerairbot" } as const;
-export const SettingsSchema = z.object({ claudeUrl: z.string(), tgButtonText: z.string(), tgButtonUrl: z.string() });
+export const SettingsSchema = z.object({
+  claudeUrl: z.string(),
+  tgButtonText: z.string(),
+  tgButtonUrl: z.string(),
+  /** Claude берётся за задания сам (задача Claude с запуском по сигналу) */
+  claudeAuto: z.object({ configured: z.boolean(), lastFire: z.number().nullable(), pending: z.number() }).optional(),
+});
 export type Settings = z.infer<typeof SettingsSchema>;
 export const SettingsInputSchema = z.object({
   claudeUrl: ClaudeUrlSchema.optional(),

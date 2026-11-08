@@ -315,7 +315,19 @@ function ClaudeLinkSetting() {
         save.mutate({ claudeUrl: current.trim() }, { onSuccess: () => setValue(null) });
       }}
     >
-      <label htmlFor="claude-url" className="block font-semibold">
+      <p className="font-semibold">Claude берётся за задания сам</p>
+      {q.data?.claudeAuto?.configured ? (
+        <p className="text-sm text-wa">
+          ✓ Включено: новое задание, заказ или правка — Claude начнёт работу примерно через минуту и пришлёт уведомление.
+          {q.data.claudeAuto.lastFire ? ` Последний запуск: ${new Date(q.data.claudeAuto.lastFire).toLocaleString("ru-RU")}.` : ""}
+          {q.data.claudeAuto.pending ? ` Ждут запуска: ${q.data.claudeAuto.pending}.` : ""}
+        </p>
+      ) : (
+        <p className="text-sm text-amber-300">
+          Выключено: задания ждут, пока вы напишете Claude в чат. Чтобы включить, в Cloudflare нужны CLAUDE_ROUTINE_URL и CLAUDE_ROUTINE_TOKEN.
+        </p>
+      )}
+      <label htmlFor="claude-url" className="block pt-2 font-semibold">
         Чат с Claude (кнопка «💬 Claude»)
       </label>
       <p className="text-sm text-white/55">

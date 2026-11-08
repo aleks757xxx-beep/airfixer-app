@@ -3,6 +3,7 @@ import type { AppBindings } from "../env";
 import { DEFAULT_CLAUDE_URL, DEFAULT_TG_BUTTON, SettingsInputSchema, type Settings } from "../../shared/schemas";
 import { ensureMigrated } from "../lib/migrate";
 import { audit } from "../middleware/auth";
+import { lastFire, routineConfigured } from "../services/routine";
 
 const KEYS = { claudeUrl: "claude_url", tgButtonText: "tg_button_text", tgButtonUrl: "tg_button_url" } as const;
 
@@ -22,7 +23,14 @@ export const settings = new Hono<AppBindings>()
     await ensureMigrated(c.env.DB);
     await next();
   })
-  .get("/", async (c) => c.json(await readSettings(c.env.DB)))
+  .get("/", async (c) => {
+    const pending = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM agent_wakeups WHERE fired_at IS NULL").first<{ n: number }>();
+    const body: Settings = {
+      ...(await readSettings(c.env.DB)),
+      claudeAuto: { configured: routineConfigured(c.env), lastFire: await lastFire(c.env.DB), pending: pending?.n ?? 0 },
+    };
+    return c.json(body);
+  })
   .put("/", async (c) => {
     const parsed = SettingsInputSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Проверьте настройки" }, 400);
