@@ -24,7 +24,7 @@ import { serviceInfo } from "../publish/channels";
 
 /**
  * «Подключения» — как раздел Channels в Buffer: каждая соцсеть карточкой и сетка «Подключить канал».
- * Напрямую: Instagram, Facebook (Meta), Telegram. Через Buffer: TikTok, Google, YouTube (пока).
+ * Напрямую: Instagram, Facebook (Meta), Telegram, YouTube (Google). Через Buffer: TikTok, Google Бизнес.
  */
 
 const DAY_RU: Record<string, string> = {
@@ -424,6 +424,11 @@ export function ConnectionsPage() {
             Instagram подключён: {params.get("name")}
           </Banner>
         ) : null}
+        {connected === "youtube" ? (
+          <Banner tone="success">
+            YouTube подключён: {params.get("name")}
+          </Banner>
+        ) : null}
         {error ? <Banner tone="error">{error}</Banner> : null}
         {direct.isError ? (
           <Banner tone="error">{direct.error.message}</Banner>
@@ -555,16 +560,26 @@ export function ConnectionsPage() {
           <AddTile
             service="youtube"
             title="YouTube"
-            note="Пока через Buffer, напрямую — скоро"
+            note={direct.data?.youtube?.configured ? "Канал AirFixer — напрямую, вход через Google" : "Пока через Buffer, напрямую — скоро"}
           >
-            <LinkButton
-              variant="outlined"
-              icon="open_in_new"
-              href={BUFFER_CONNECT}
-              external
-            >
-              Buffer
-            </LinkButton>
+            {direct.data?.youtube?.configured ? (
+              <LinkButton
+                variant={accounts.some((a) => a.service === "youtube") ? "tonal" : "filled"}
+                icon={accounts.some((a) => a.service === "youtube") ? "sync" : "add_link"}
+                href="/api/v2/connect/youtube/start"
+              >
+                {accounts.some((a) => a.service === "youtube") ? "Заново" : "Подключить"}
+              </LinkButton>
+            ) : (
+              <LinkButton
+                variant="outlined"
+                icon="open_in_new"
+                href={BUFFER_CONNECT}
+                external
+              >
+                Buffer
+              </LinkButton>
+            )}
           </AddTile>
           <AddTile service="tiktok" title="TikTok" note="Только через Buffer">
             <LinkButton

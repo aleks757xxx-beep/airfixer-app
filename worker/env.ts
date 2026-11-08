@@ -24,6 +24,11 @@ export interface Env {
   TG_BOT_TOKEN?: string;
   /** Только для локальной проверки (заглушка Bot API) */
   TG_API_URL?: string;
+  /** Google Cloud (YouTube напрямую): ID клиента OAuth (не секрет) и секрет клиента */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  /** Только для локальной проверки (заглушка Google) */
+  GOOGLE_API_URL?: string;
 }
 
 export type AppBindings = { Bindings: Env };

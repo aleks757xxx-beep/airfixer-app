@@ -13,6 +13,7 @@ import {
   type MetaPage,
 } from "./meta";
 import { TelegramError, sendVideo, type TgChat } from "./telegram";
+import { YT_CHUNK, YoutubeError, refreshGoogleToken, startUpload, uploadChunk, uploadState, youtubeLink, youtubeTitle } from "./youtube";
 import { readSettings } from "../routes/settings";
 
 /** Прямая публикация (без Buffer): аккаунты, своя очередь со слотами, отправка к сроку (cron). */
@@ -143,6 +144,30 @@ export async function saveTelegramChannel(db: D1Database, chat: TgChat): Promise
        ON CONFLICT(id) DO UPDATE SET name = excluded.name, page_id = excluded.page_id, updated_at = excluded.updated_at`,
     )
     .bind(`tg:${chat.id}`, chat.title ?? chat.username ?? `Канал ${chat.id}`, String(chat.id), chat.username ?? null, ig?.slots ?? JSON.stringify(DEFAULT_SLOTS), now, now)
+    .run();
+}
+
+/** Сохранить канал YouTube после входа Google (ключ обновления — зашифрован). Канал Buffer с тем же именем скрывается. */
+export async function saveYoutubeChannel(
+  env: Env,
+  ch: { id: string; title: string; refreshToken: string },
+  bufferChannels: ReadonlyArray<Channel>,
+): Promise<void> {
+  const id = `yt:${ch.id}`;
+  const hidden = new Set(await hiddenIds(env.DB));
+  if (hidden.delete(id)) {
+    await env.DB.prepare("UPDATE app_settings SET value = ?, updated_at = ? WHERE key = ?").bind(JSON.stringify([...hidden]), Date.now(), HIDDEN_KEY).run();
+  }
+  const name = ch.title.toLowerCase();
+  const buf = bufferChannels.find((c) => c.service === "youtube" && (c.name.toLowerCase() === name || (c.displayName ?? "").toLowerCase() === name));
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO direct_accounts (id, service, name, external_id, page_id, token_enc, token_expires_at, replaces, slots, created_at, updated_at)
+     VALUES (?, 'youtube', ?, ?, NULL, ?, NULL, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET name = excluded.name, token_enc = excluded.token_enc,
+       replaces = COALESCE(direct_accounts.replaces, excluded.replaces), updated_at = excluded.updated_at`,
+  )
+    .bind(id, ch.title, ch.id, await seal(env.TOKEN_KEY, ch.refreshToken), buf?.id ?? null, JSON.stringify(buf?.schedule ?? DEFAULT_SLOTS), now, now)
     .run();
 }
 
@@ -355,6 +380,7 @@ async function step(env: Env, p: PostRow): Promise<void> {
   if (!a) return fail(db, p, "Аккаунт отключён");
   const now = Date.now();
   if (a.service === "telegram") return stepTelegram(env, p, a);
+  if (a.service === "youtube") return stepYoutube(env, p, a);
   const token = await open(env.TOKEN_KEY, a.token_enc);
 
   if (p.status === "scheduled") {
@@ -365,7 +391,7 @@ async function step(env: Env, p: PostRow): Promise<void> {
     let container: string;
     if (a.service === "instagram") container = await igCreateContainer(a.external_id, token, { videoUrl, caption, thumbMs: p.thumb_ms ?? undefined });
     else if (a.service === "facebook") container = await fbPublishReel(a.external_id, token, videoUrl, caption);
-    else return fail(db, p, "YouTube напрямую ещё не подключён");
+    else return fail(db, p, "Эта соцсеть напрямую не поддерживается");
     await db
       .prepare("UPDATE direct_posts SET status = 'processing', container_id = ?, attempts = attempts + 1, updated_at = ? WHERE id = ?")
       .bind(container, now, p.id)
@@ -443,6 +469,64 @@ async function stepTelegram(env: Env, p: PostRow, a: AccountRow): Promise<void> 
     .run();
 }
 
+/**
+ * YouTube: начать загрузку, затем каждую минуту досылать по куску (64 МБ).
+ * Сколько уже дошло, спрашиваем у YouTube — поэтому повтор после сбоя продолжает с места остановки.
+ */
+async function stepYoutube(env: Env, p: PostRow, a: AccountRow): Promise<void> {
+  const db = env.DB;
+  const clientId = env.GOOGLE_CLIENT_ID?.trim();
+  const secret = env.GOOGLE_CLIENT_SECRET?.trim();
+  if (!clientId || !secret) return fail(db, p, "Не заданы GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET в Cloudflare");
+  const m = await db.prepare("SELECT r2_key, size FROM media WHERE id = ? AND deleted_at IS NULL").bind(p.media_id).first<{ r2_key: string; size: number }>();
+  if (!m) return fail(db, p, "Ролик удалён из библиотеки");
+  const now = Date.now();
+
+  if (p.status === "scheduled") {
+    const head = await env.BUCKET.head(m.r2_key);
+    if (!head) return fail(db, p, "Файл ролика не найден в хранилище");
+    const access = await refreshGoogleToken(clientId, secret, await open(env.TOKEN_KEY, a.token_enc));
+    const url = await startUpload(access, {
+      title: youtubeTitle(p.title, p.text),
+      description: p.text,
+      size: head.size,
+      contentType: head.httpMetadata?.contentType ?? "video/mp4",
+    });
+    await db
+      .prepare("UPDATE direct_posts SET status = 'processing', container_id = ?, attempts = attempts + 1, updated_at = ? WHERE id = ? AND status = 'scheduled'")
+      .bind(url, now, p.id)
+      .run();
+    return;
+  }
+
+  if (!p.container_id) return fail(db, p, "Нет адреса загрузки YouTube — нажмите «Повторить»");
+  if (now - p.updated_at > PROCESS_TIMEOUT_MS) return fail(db, p, "YouTube слишком долго принимает ролик — нажмите «Повторить»");
+  // Кусок предыдущей минуты ещё может идти — не шлём параллельно
+  if (now - p.updated_at < 50_000) return;
+  const claim = await db.prepare("UPDATE direct_posts SET updated_at = ? WHERE id = ? AND updated_at = ?").bind(now, p.id, p.updated_at).run();
+  if (!claim.meta.changes) return;
+
+  const head = await env.BUCKET.head(m.r2_key);
+  if (!head) return fail(db, p, "Файл ролика не найден в хранилище");
+  let st = await uploadState(p.container_id, head.size);
+  if (!st.done) {
+    const len = Math.min(YT_CHUNK, head.size - st.received);
+    const obj = await env.BUCKET.get(m.r2_key, { range: { offset: st.received, length: len } });
+    if (!obj) return fail(db, p, "Файл ролика не найден в хранилище");
+    st = await uploadChunk(p.container_id, obj.body, st.received, len, head.size);
+  }
+  if (!st.done) {
+    // прогресс есть — обнуляем счётчик попыток, чтобы большой ролик не упёрся в лимит повторов
+    await db.prepare("UPDATE direct_posts SET attempts = 1, updated_at = ? WHERE id = ?").bind(Date.now(), p.id).run();
+    return;
+  }
+  const done = Date.now();
+  await db
+    .prepare("UPDATE direct_posts SET status = 'sent', external_id = ?, external_link = ?, sent_at = ?, error = NULL, updated_at = ? WHERE id = ?")
+    .bind(st.videoId, youtubeLink(st.videoId), done, done, p.id)
+    .run();
+}
+
 /** Обработать созревшие посты (не больше 5 за раз, чтобы уложиться в лимиты Worker). */
 export async function processDirectQueue(env: Env): Promise<number> {
   const rows = await env.DB.prepare(
@@ -456,7 +540,7 @@ export async function processDirectQueue(env: Env): Promise<number> {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "ошибка";
       // сетевые сбои — повторим на следующей минуте (до 3 попыток), ошибки Meta — сразу показываем
-      if (e instanceof MetaError || e instanceof TelegramError || p.attempts >= 3) await fail(env.DB, p, msg);
+      if (e instanceof MetaError || e instanceof TelegramError || e instanceof YoutubeError || p.attempts >= 3) await fail(env.DB, p, msg);
       else await env.DB.prepare("UPDATE direct_posts SET attempts = attempts + 1 WHERE id = ?").bind(p.id).run();
     }
   }

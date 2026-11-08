@@ -14,9 +14,10 @@ import {
   listPages,
   metaLoginUrl,
 } from "../services/meta";
-import { accountToChannel, disconnectAccount, listAccounts, saveInstagramLogin, saveMetaAccounts, saveTelegramChannel, setSlots } from "../services/direct";
+import { accountToChannel, disconnectAccount, listAccounts, saveInstagramLogin, saveMetaAccounts, saveTelegramChannel, saveYoutubeChannel, setSlots } from "../services/direct";
 import { TelegramError, chatByAddress, getMe, recentChannels } from "../services/telegram";
 import { listChannels } from "../services/publish";
+import { YoutubeError, exchangeGoogleCode, googleLoginUrl, myChannels } from "../services/youtube";
 import { migrated } from "./media";
 
 const STATE_TTL_MS = 10 * 60_000;
@@ -27,6 +28,20 @@ const igConfigId = (env: { META_IG_CONFIG_ID?: string }) => env.META_IG_CONFIG_I
 const igConfigured = (env: { META_IG_CONFIG_ID?: string; META_APP_SECRET?: string; TOKEN_KEY?: string }) =>
   !!(igConfigId(env) && env.META_APP_SECRET && env.TOKEN_KEY);
 const appId = (env: { META_APP_ID?: string }) => env.META_APP_ID?.trim() || META_APP_ID_DEFAULT;
+/** Google (YouTube): свой адрес возврата. */
+const ytRedirectUri = (url: string) => `https://${new URL(url).host}/api/v2/connect/youtube/callback`;
+const googleClientId = (env: { GOOGLE_CLIENT_ID?: string }) => env.GOOGLE_CLIENT_ID?.trim() || GOOGLE_CLIENT_ID_DEFAULT;
+const ytConfigured = (env: { GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; TOKEN_KEY?: string }) =>
+  !!(googleClientId(env) && env.GOOGLE_CLIENT_SECRET?.trim() && env.TOKEN_KEY);
+/** ID клиента OAuth в Google Cloud (не секрет; проект PostFixer). */
+const GOOGLE_CLIENT_ID_DEFAULT = "";
+
+async function newState(db: D1Database, provider: string): Promise<string> {
+  const state = randomToken(24);
+  await db.prepare("DELETE FROM oauth_states WHERE created_at < ?").bind(Date.now() - STATE_TTL_MS).run();
+  await db.prepare("INSERT INTO oauth_states (state, provider, created_at) VALUES (?, ?, ?)").bind(state, provider, Date.now()).run();
+  return state;
+}
 
 const SlotsSchema = z.array(
   z.object({ day: z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]), times: z.array(z.string().regex(/^\d{2}:\d{2}$/)).max(24), paused: z.boolean() }),
@@ -45,7 +60,13 @@ export const connect = new Hono<AppBindings>()
         bot: c.env.TG_BOT_TOKEN?.trim() ? await getMe(c.env.TG_BOT_TOKEN.trim()).then((m) => m.username).catch(() => null) : null,
       },
       instagram: { configured: igConfigured(c.env) },
+      youtube: { configured: ytConfigured(c.env) },
     });
+  })
+  // Кнопка «Подключить YouTube» → вход Google
+  .get("/youtube/start", async (c) => {
+    if (!ytConfigured(c.env)) return c.redirect("/#/connections?connect_error=" + encodeURIComponent("YouTube напрямую ещё не настроен (GOOGLE_CLIENT_SECRET)"));
+    return c.redirect(googleLoginUrl(googleClientId(c.env), ytRedirectUri(c.req.url), await newState(c.env.DB, "youtube")));
   })
   // Кнопка «Подключить Instagram без страницы» → вход в Instagram
   .get("/instagram/start", async (c) => {
@@ -151,9 +172,46 @@ connectCallback.get("/meta/callback", async (c) => {
   }
 });
 
+/** Возврат из Google: ключ обновления → канал YouTube владельца. */
+connectCallback.get("/youtube/callback", async (c) => {
+  const back = (q: string) => c.redirect(`/#/connections?${q}`);
+  const state = c.req.query("state") ?? "";
+  const code = c.req.query("code");
+  const row = await c.env.DB.prepare("SELECT created_at, provider FROM oauth_states WHERE state = ?").bind(state).first<{ created_at: number; provider: string }>();
+  await c.env.DB.prepare("DELETE FROM oauth_states WHERE state = ?").bind(state).run();
+  if (!row || row.provider !== "youtube" || Date.now() - row.created_at > STATE_TTL_MS) {
+    return back("connect_error=" + encodeURIComponent("Ссылка входа устарела — нажмите «Подключить YouTube» ещё раз"));
+  }
+  if (!code) return back("connect_error=" + encodeURIComponent(c.req.query("error") === "access_denied" ? "Вход в Google отменён" : "Google не дал доступ"));
+  const secret = c.env.GOOGLE_CLIENT_SECRET?.trim();
+  if (!secret) return back("connect_error=" + encodeURIComponent("Не задан GOOGLE_CLIENT_SECRET"));
+  try {
+    const t = await exchangeGoogleCode(googleClientId(c.env), secret, ytRedirectUri(c.req.url), code);
+    if (!t.refreshToken) return back("connect_error=" + encodeURIComponent("Google не выдал постоянный доступ — нажмите «Подключить YouTube» ещё раз"));
+    const channels = await myChannels(t.accessToken);
+    if (channels.length === 0) return back("connect_error=" + encodeURIComponent("У этого Google-аккаунта нет канала YouTube — войдите аккаунтом канала AirFixer"));
+    const key = c.env.BUFFER_API_KEY?.trim();
+    const bufferChannels = key ? await listChannels(key, c.env.DB).catch(() => []) : [];
+    for (const ch of channels) await saveYoutubeChannel(c.env, { id: ch.id, title: ch.title, refreshToken: t.refreshToken }, bufferChannels);
+    const names = channels.map((ch) => ch.title).join(", ");
+    await audit(c.env.DB, "direct connect youtube", names);
+    return back(`connected=youtube&name=${encodeURIComponent(names)}`);
+  } catch (e: unknown) {
+    const msg = e instanceof YoutubeError || e instanceof BufferError ? e.message : "Ошибка подключения YouTube";
+    console.error("youtube connect", e);
+    await audit(c.env.DB, "youtube connect error", msg.slice(0, 300));
+    return back("connect_error=" + encodeURIComponent(msg));
+  }
+});
+
 /** Для Claude (по токену): ссылка входа Meta, чтобы подключить аккаунт по просьбе владельца из его браузера. */
 export const connectAgent = new Hono<AppBindings>().get("/:provider/url", async (c) => {
   const provider = c.req.param("provider");
+  if (provider === "youtube") {
+    if (!ytConfigured(c.env)) return c.json({ error: "YouTube напрямую ещё не настроен (GOOGLE_CLIENT_SECRET)" }, 503);
+    await audit(c.env.DB, "connect url (claude)", provider);
+    return c.json({ url: googleLoginUrl(googleClientId(c.env), ytRedirectUri(c.req.url), await newState(c.env.DB, "youtube")) });
+  }
   if (provider !== "meta" && provider !== "instagram") return c.json({ error: "Неизвестная соцсеть" }, 404);
   if (provider === "instagram" && !igConfigured(c.env)) return c.json({ error: "Единый вход Instagram ещё не настроен" }, 503);
   const state = randomToken(24);
