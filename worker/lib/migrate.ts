@@ -9,6 +9,7 @@ import purge0008 from "../../migrations/0008_purge.sql";
 import cache0009 from "../../migrations/0009_buffer_cache.sql";
 import direct0010 from "../../migrations/0010_direct.sql";
 import telegram0011 from "../../migrations/0011_telegram.sql";
+import passkeys0012 from "../../migrations/0012_passkeys.sql";
 
 /** Миграции по порядку. Новую — добавлять в конец, старые не менять. */
 const MIGRATIONS: ReadonlyArray<{ id: number; name: string; sql: string }> = [
@@ -23,6 +24,7 @@ const MIGRATIONS: ReadonlyArray<{ id: number; name: string; sql: string }> = [
   { id: 9, name: "0009_buffer_cache", sql: cache0009 },
   { id: 10, name: "0010_direct", sql: direct0010 },
   { id: 11, name: "0011_telegram", sql: telegram0011 },
+  { id: 12, name: "0012_passkeys", sql: passkeys0012 },
 ];
 
 let applied: Promise<number> | null = null;

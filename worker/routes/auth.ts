@@ -112,21 +112,19 @@ export const auth = new Hono<AppBindings>()
     return c.json(body);
   })
 
-  /** Показать ключ кода проверки ещё раз (добавить код на второе устройство). Только после входа и с текущим кодом. */
+  /** Показать ключ кода проверки ещё раз (добавить запасной код в «Пароли»). Только после входа и с паролем. */
   .post("/totp/reveal", requireAuth, async (c) => {
     const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
     if (await tooManyAttempts(c.env.DB, ip)) return c.json({ error: "Слишком много попыток. Подождите 15 минут." }, 429);
-    const parsed = TotpCodeSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: "Код — 6 цифр" }, 400);
-    const row = await c.env.DB.prepare("SELECT totp_secret_enc, last_step FROM auth_settings WHERE id = 1").first<{ totp_secret_enc: string | null; last_step: number | null }>();
+    const parsed = LoginInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Введите пароль" }, 400);
+    const row = await c.env.DB.prepare("SELECT totp_secret_enc FROM auth_settings WHERE id = 1").first<{ totp_secret_enc: string | null }>();
     if (!row?.totp_secret_enc) return c.json({ error: "Код проверки не подключён" }, 400);
-    const step = await verifyTotp(row.totp_secret_enc, parsed.data.code, row.last_step);
-    if (step === null) {
+    if (!(await safeEqual(parsed.data.password.trim(), c.env.APP_PASSWORD?.trim() ?? ""))) {
       await recordFail(c.env.DB, ip);
       await slow();
-      return c.json({ error: "Неверный код — введите следующий из «Паролей»" }, 401);
+      return c.json({ error: "Неверный пароль" }, 401);
     }
-    await c.env.DB.prepare("UPDATE auth_settings SET last_step = ? WHERE id = 1").bind(step).run();
     await audit(c.env.DB, "totp reveal", "ключ показан для второго устройства");
     const body: TotpSetup = { secret: row.totp_secret_enc, uri: otpauthUri(row.totp_secret_enc, "Алексей", "PostFixer") };
     return c.json(body);

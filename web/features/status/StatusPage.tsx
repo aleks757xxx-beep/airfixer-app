@@ -1,6 +1,6 @@
 import { useHealth } from "../../api/hooks";
 import { Card, Skeleton, StatusDot } from "../../components/ui/Card";
-import { useLogout } from "../../api/auth";
+import { useDeletePasskey, useLogout, usePasskeyRegister, usePasskeys } from "../../api/auth";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { useMutation } from "@tanstack/react-query";
@@ -195,11 +195,56 @@ function BufferPlan() {
   );
 }
 
-/** Код проверки на втором устройстве (телефоне): ввести текущий код → QR и ключ. */
+/** Вход по Face ID / Touch ID: создать ключ входа на этом устройстве, список, удалить. */
+function PasskeysBlock() {
+  const q = usePasskeys();
+  const reg = usePasskeyRegister();
+  const del = useDeletePasskey();
+  const items = q.data?.items ?? [];
+  const fmt = (t: number) => new Date(t).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  return (
+    <div className="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
+      <p className="font-semibold">Вход по Face ID / Touch ID</p>
+      <p className="text-xs text-white/50">
+        Ключ входа хранится в «Паролях» Apple и сам появляется на iPhone и Mac через iCloud. Создайте его один раз здесь — дальше на входе нажимайте «Войти по
+        Face ID / Touch ID», без пароля и кода.
+      </p>
+      {items.length > 0 ? (
+        <ul className="space-y-1">
+          {items.map((k) => (
+            <li key={k.id} className="flex items-center gap-2">
+              <span>
+                🔑 Создан на {k.device}, {fmt(k.createdAt)}
+              </span>
+              <span className="text-xs text-white/40">{k.lastUsedAt ? `вход: ${fmt(k.lastUsedAt)}` : "ещё не входили"}</span>
+              <button
+                type="button"
+                className="ml-auto text-xs font-semibold text-red-400"
+                disabled={del.isPending}
+                onClick={() => window.confirm("Удалить этот ключ входа? Войти им больше не получится.") && del.mutate(k.id)}
+              >
+                Удалить
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : q.isSuccess ? (
+        <p className="text-amber-300">Ключей входа пока нет.</p>
+      ) : null}
+      <button type="button" disabled={reg.isPending} onClick={() => reg.mutate()} className="rounded-full bg-brand px-4 py-2 font-bold text-white disabled:opacity-50">
+        {reg.isPending ? "Жду Face ID / Touch ID…" : "Создать ключ входа на этом устройстве"}
+      </button>
+      {reg.isSuccess ? <p className="rounded-lg bg-wa/15 p-2 text-wa">✓ Ключ входа создан. Через минуту он появится и на iPhone.</p> : null}
+      {reg.isError && reg.error.message !== "Отменено" ? <p className="rounded-lg bg-red-500/15 p-2 text-red-300">⚠️ {reg.error.message}</p> : null}
+    </div>
+  );
+}
+
+/** Запасной вход: показать ключ кода проверки (по паролю), чтобы добавить код в «Пароли». */
 function SecondDeviceCode() {
   const [code, setCode] = useState("");
   const [qr, setQr] = useState<string | null>(null);
-  const reveal = useMutation({ mutationFn: (c: string) => apiPost("/auth/totp/reveal", TotpSetupSchema, { code: c }) });
+  const reveal = useMutation({ mutationFn: (c: string) => apiPost("/auth/totp/reveal", TotpSetupSchema, { password: c }) });
   const uri = reveal.data?.uri;
   useEffect(() => {
     if (!uri) return;
@@ -213,10 +258,10 @@ function SecondDeviceCode() {
   }, [uri]);
   return (
     <div className="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
-      <p className="font-semibold">Код входа на телефоне</p>
+      <p className="font-semibold">Запасной вход: код проверки</p>
       <p className="text-xs text-white/50">
-        Если коды проверки есть только на одном устройстве: введите текущий код из «Паролей» — PostFixer покажет QR. Отсканируйте его камерой iPhone →
-        «Добавить код в Пароли» → выберите запись PostFixer. Ключ никому не показывайте и закройте страницу после.
+        На случай, если Face ID не сработает: вход паролем + 6 цифр из «Паролей». Введите пароль PostFixer — появится QR. Отсканируйте его камерой iPhone →
+        «Добавить код в Пароли» → запись app.airfixer.ge. Ключ никому не показывайте и нажмите «Скрыть» после.
       </p>
       {reveal.data ? (
         <>
@@ -234,19 +279,19 @@ function SecondDeviceCode() {
           className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            reveal.mutate(code.trim());
+            reveal.mutate(code);
           }}
         >
           <input
             value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            placeholder="6 цифр"
-            aria-label="Текущий код проверки"
-            className="w-32 rounded-lg border border-white/15 bg-ink-deep p-2 text-center font-mono text-white focus:border-brand focus:outline-none"
+            onChange={(e) => setCode(e.target.value)}
+            type="password"
+            autoComplete="current-password"
+            placeholder="Пароль PostFixer"
+            aria-label="Пароль PostFixer"
+            className="min-w-0 flex-1 rounded-lg border border-white/15 bg-ink-deep p-2 text-white focus:border-brand focus:outline-none"
           />
-          <button type="submit" disabled={code.length !== 6 || reveal.isPending} className="rounded-full bg-brand px-4 py-1.5 font-bold text-white disabled:opacity-40">
+          <button type="submit" disabled={!code || reveal.isPending} className="rounded-full bg-brand px-4 py-1.5 font-bold text-white disabled:opacity-40">
             Показать QR
           </button>
         </form>
@@ -350,6 +395,7 @@ export function StatusPage() {
           </li>
         ))}
       </ul>
+      <PasskeysBlock />
       <DirectConnections />
       <TelegramConnect />
       <BufferPlan />

@@ -22,6 +22,8 @@
   },
   "type": "module",
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.3",
     "@tanstack/react-query": "^5.107.1",
     "hono": "^4.13.17",
     "qrcode": "^1.5.4",

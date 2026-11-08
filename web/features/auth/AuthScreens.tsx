@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import QRCode from "qrcode";
-import { useLogin, useTotpSetup, useTotpVerify } from "../../api/auth";
+import { browserSupportsWebAuthn } from "@simplewebauthn/browser";
+import { useLogin, usePasskeyLogin, useTotpSetup, useTotpVerify } from "../../api/auth";
 
 function Shell({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
@@ -29,12 +30,23 @@ function ErrorText({ text }: { text: string | null }) {
 export function LoginPage() {
   const [password, setPassword] = useState("");
   const login = useLogin();
+  const passkey = usePasskeyLogin();
+  const canPasskey = browserSupportsWebAuthn();
   const submit = (e: FormEvent) => {
     e.preventDefault();
     login.mutate({ password });
   };
   return (
     <Shell title="PostFixer" subtitle="Постинг для AirFixer">
+      {canPasskey ? (
+        <>
+          <ErrorText text={passkey.error && passkey.error.message !== "Отменено" ? passkey.error.message : null} />
+          <button type="button" className={`${btnCls} mt-0 bg-brand`} disabled={passkey.isPending} onClick={() => passkey.mutate()}>
+            {passkey.isPending ? "Жду Face ID…" : "Войти по Face ID / Touch ID"}
+          </button>
+          <p className="my-4 text-center text-sm text-slate-500 dark:text-white/50">или паролем</p>
+        </>
+      ) : null}
       <form onSubmit={submit}>
         <ErrorText text={login.error?.message ?? null} />
         {/* Логин для «Паролей» Apple: чтобы связка ключей сохранила и подставляла пароль и код */}
@@ -47,7 +59,7 @@ export function LoginPage() {
           placeholder="Пароль"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          autoFocus
+          autoFocus={!canPasskey}
           required
         />
         <button className={btnCls} type="submit" disabled={login.isPending}>

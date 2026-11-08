@@ -3,6 +3,7 @@ import type { AppBindings, Env } from "./env";
 import { securityHeaders, sameOrigin } from "./middleware/security";
 import { health } from "./routes/health";
 import { auth } from "./routes/auth";
+import { passkeys } from "./routes/passkeys";
 import { requireAuth } from "./middleware/auth";
 import { ensureMigrated } from "./lib/migrate";
 import { cleanupOrphans, serveMedia } from "./services/storage";
@@ -39,6 +40,7 @@ api.route("/ingest/agent/publish", publishAgent);
 api.route("/ingest/agent", ordersAgent);
 api.route("/ingest", ingest);
 api.use("*", sameOrigin);
+api.route("/auth/passkey", passkeys);
 api.route("/auth", auth);
 // Всё остальное — только после входа (пароль + код)
 api.use("*", requireAuth);
