@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { ICONS, type IconName } from "./icons";
 
 /** Небольшой набор компонентов Material Design 3 (без внешних библиотек). */
@@ -199,6 +199,59 @@ export function Banner({ tone, children }: { tone: "success" | "error" | "warnin
     <div role={tone === "error" ? "alert" : "status"} className={`type-body-m flex items-start gap-3 rounded-m3m p-3 ${cls}`}>
       <Icon name={icon} size={20} className="mt-px" />
       <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+/** Меню M3 по кнопке «⋮»: пункты со значком и текстом. Закрывается кликом мимо или по пункту. */
+export function OverflowMenu({
+  label,
+  items,
+}: {
+  label: string;
+  items: ReadonlyArray<{ icon: IconName; text: string; onClick?: () => void; href?: string; danger?: boolean }>;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <IconButton icon="more_vert" label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} />
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <ul role="menu" className="elevation-2 absolute right-0 top-11 z-50 min-w-56 rounded-m3xs bg-surface-container py-2">
+            {items.map((it) => {
+              const cls = `state-layer type-label-l flex h-12 w-full items-center gap-3 px-3 text-left ${it.danger ? "text-error" : "text-on-surface"}`;
+              const body = (
+                <>
+                  <Icon name={it.icon} className={it.danger ? "" : "text-on-surface-variant"} />
+                  {it.text}
+                </>
+              );
+              return (
+                <li key={it.text} role="none">
+                  {it.href ? (
+                    <a role="menuitem" href={it.href} target="_blank" rel="noreferrer" className={cls} onClick={() => setOpen(false)}>
+                      {body}
+                    </a>
+                  ) : (
+                    <button
+                      role="menuitem"
+                      type="button"
+                      className={cls}
+                      onClick={() => {
+                        setOpen(false);
+                        it.onClick?.();
+                      }}
+                    >
+                      {body}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : null}
     </div>
   );
 }

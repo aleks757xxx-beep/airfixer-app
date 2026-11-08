@@ -14,9 +14,9 @@ import {
   Chip,
   Dialog,
   Icon,
-  IconButton,
   LinkButton,
   M3Card,
+  OverflowMenu,
   SectionTitle,
   TextField,
 } from "../../components/m3";
@@ -127,34 +127,16 @@ function Via({ direct }: { direct: boolean }) {
 }
 
 function RowActions({ row }: { row: Row }) {
+  const name = row.channel.displayName || row.channel.name;
+  const items = [
+    ...(row.onTgButton ? [{ icon: "link" as const, text: "Кнопка под постами", onClick: row.onTgButton }] : []),
+    ...(row.onDisconnect
+      ? [{ icon: "link_off" as const, text: "Отключить", onClick: row.onDisconnect, danger: true }]
+      : [{ icon: "open_in_new" as const, text: "Открыть в Buffer", href: "https://publish.buffer.com/" }]),
+  ];
   return (
     <div className="flex justify-end">
-      {row.onTgButton ? (
-        <IconButton
-          icon="link"
-          label="Кнопка под постами"
-          onClick={row.onTgButton}
-        />
-      ) : null}
-      {row.onDisconnect ? (
-        <IconButton
-          icon="link_off"
-          label="Отключить"
-          className="text-error"
-          onClick={row.onDisconnect}
-        />
-      ) : (
-        <a
-          href="https://publish.buffer.com/"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Открыть Buffer"
-          title="Открыть Buffer"
-          className="state-layer inline-flex size-10 items-center justify-center rounded-full text-on-surface-variant"
-        >
-          <Icon name="open_in_new" />
-        </a>
-      )}
+      <OverflowMenu label={`Действия: ${name}`} items={items} />
     </div>
   );
 }
@@ -162,7 +144,7 @@ function RowActions({ row }: { row: Row }) {
 /** Каналы: на телефоне — список строк, на компьютере — таблица. */
 function ChannelsTable({ rows }: { rows: Row[] }) {
   return (
-    <M3Card variant="outlined" className="overflow-hidden">
+    <M3Card variant="outlined">
       {/* телефон */}
       <ul className="divide-y divide-outline-variant md:hidden">
         {rows.map((r) => (
@@ -461,17 +443,21 @@ export function ConnectionsPage() {
           <Icon name="cloud" size={16} />
           Buffer — публикуется через Buffer
         </li>
-        <li className="flex flex-wrap items-center gap-1.5">
+        <li className="flex items-center gap-1.5">
           <Icon name="check_circle_fill" size={16} className="text-success" />
-          работает · <Icon name="lock_fill" size={16} className="text-warning" /> блок — Buffer заблокировал по тарифу
+          работает
+        </li>
+        <li className="flex items-center gap-1.5">
+          <Icon name="lock_fill" size={16} className="text-warning" />
+          блок — Buffer заблокировал по тарифу
+        </li>
+        <li className="flex items-center gap-1.5">
+          <Icon name="more_vert" size={16} />
+          действия: отключить, кнопка под постом, Buffer
         </li>
         <li className="flex items-center gap-1.5">
           <Icon name="schedule" size={16} />
           «2 раза в день · 06:08–22:32» — время очереди
-        </li>
-        <li className="flex flex-wrap items-center gap-1.5">
-          <Icon name="link_off" size={16} className="text-error" />
-          отключить · <Icon name="link" size={16} /> кнопка под постом · <Icon name="open_in_new" size={16} /> открыть Buffer
         </li>
       </ul>
       {direct.isPending || channels.isPending ? (

@@ -1,2 +1,2 @@
 /** Поднимать при каждом изменении. */
-export const APP_VERSION = "0.17.3";
+export const APP_VERSION = "0.17.4";
