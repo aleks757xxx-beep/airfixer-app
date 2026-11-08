@@ -4,6 +4,7 @@ import {
   ALLOWED_VIDEO_EXT,
   PART_SIZE,
   NoteInputSchema,
+  RepostInputSchema,
   TaskReplySchema,
   UploadCompleteInputSchema,
   UploadStartInputSchema,
@@ -36,6 +37,7 @@ export interface MediaRow {
   note_reply: string | null;
   note_at: number | null;
   tg_size?: number | null;
+  repostable?: number | null;
 }
 interface UploadRow {
   id: string;
@@ -62,9 +64,10 @@ export const toItem = (r: MediaRow): MediaItem => ({
   noteReply: r.note_reply,
   noteAt: r.note_at,
   tgSize: r.tg_size ?? null,
+  repostable: r.repostable === 1,
 });
 export const MEDIA_COLS =
-  "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at, (SELECT v.size FROM media_variants v WHERE v.media_id = media.id AND v.kind = 'tg') AS tg_size";
+  "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at, repostable, (SELECT v.size FROM media_variants v WHERE v.media_id = media.id AND v.kind = 'tg') AS tg_size";
 
 /** «имя.tg.mp4» — лёгкая копия ролика «имя.mp4» для Telegram (до 50 МБ). */
 const TG_VARIANT = /\.tg\.(mp4|mov|m4v)$/i;
@@ -246,6 +249,15 @@ export const media = new Hono<AppBindings>()
       .run();
     if (!res.meta.changes) return c.json({ error: "Ролик не найден" }, 404);
     const row = await mediaById(c.env.DB, id);
+    return row ? c.json({ item: toItem(row) }) : c.json({ error: "Ролик не найден" }, 404);
+  })
+  // «Можно повторять»
+  .put("/:id/repost", async (c) => {
+    const parsed = RepostInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Неверный запрос" }, 400);
+    const res = await c.env.DB.prepare("UPDATE media SET repostable = ? WHERE id = ? AND deleted_at IS NULL").bind(parsed.data.on ? 1 : null, c.req.param("id")).run();
+    if (!res.meta.changes) return c.json({ error: "Ролик не найден" }, 404);
+    const row = await mediaById(c.env.DB, c.req.param("id"));
     return row ? c.json({ item: toItem(row) }) : c.json({ error: "Ролик не найден" }, 404);
   })
   .delete("/:id", async (c) => {

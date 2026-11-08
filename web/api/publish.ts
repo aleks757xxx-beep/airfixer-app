@@ -21,6 +21,8 @@ import {
   type ComposeInput,
   BestTimesSchema,
   type BestTimes,
+  RepostListSchema,
+  type RepostList,
 } from "../../shared/schemas";
 import { ApiRequestError, apiGet, apiPost, apiPut } from "./client";
 import { ApiErrorSchema } from "../../shared/schemas";
@@ -95,6 +97,11 @@ export function useRetryPost() {
     mutationFn: (id: string) => apiPost(`/publish/posts/${encodeURIComponent(id)}/retry`, PostResultSchema),
     onSettled: () => qc.invalidateQueries({ queryKey: postsKey }),
   });
+}
+
+/** Ролики с галочкой «можно повторять»: куда и когда можно выложить снова. */
+export function useReposts() {
+  return useQuery<RepostList>({ queryKey: ["reposts"], queryFn: () => apiGet("/publish/reposts", RepostListSchema), staleTime: 5 * 60_000 });
 }
 
 /** «Лучшее время»: карта день × час по каналам. */

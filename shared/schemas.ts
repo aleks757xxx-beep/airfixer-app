@@ -74,8 +74,34 @@ export const MediaItemSchema = z.object({
   noteAt: z.number().int().nullable(),
   /** Размер лёгкой копии для Telegram («имя.tg.mp4»), если есть */
   tgSize: z.number().int().nullable().optional(),
+  /** Владелец отметил «можно повторять» */
+  repostable: z.boolean().optional(),
 });
 export type MediaItem = z.infer<typeof MediaItemSchema>;
+export const RepostInputSchema = z.object({ on: z.boolean() });
+
+/** Повтор роликов: что и куда можно выложить снова. */
+export const RepostListSchema = z.object({
+  /** Через сколько дней можно повторять в ту же соцсеть */
+  gapDays: z.number().int(),
+  items: z.array(
+    z.object({
+      media: MediaItemSchema,
+      /** Лучший результат: просмотры и во сколько раз лучше обычного для канала */
+      best: z.object({ channelId: z.string(), views: z.number(), ratio: z.number().nullable() }).nullable(),
+      /** Где и когда уже выходил */
+      history: z.array(z.object({ channelId: z.string(), at: z.number().int(), views: z.number().nullable(), link: z.string().nullable() })),
+      /** Куда можно сейчас (не было или прошло gapDays) */
+      ready: z.array(z.string()),
+      /** Куда можно позже: с какой даты */
+      later: z.array(z.object({ channelId: z.string(), from: z.number().int() })),
+      /** Последняя подпись — основа для повтора */
+      lastText: z.string().nullable(),
+      lastTitle: z.string().nullable(),
+    }),
+  ),
+});
+export type RepostList = z.infer<typeof RepostListSchema>;
 
 export const MediaListSchema = z.object({
   items: z.array(MediaItemSchema),

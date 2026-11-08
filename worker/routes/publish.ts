@@ -21,6 +21,7 @@ import {
 import { migrated, uploadToken } from "./media";
 import { allStats, archiveBufferHistory } from "../services/history";
 import { bestSlot, bestTimes, isExploreTurn } from "../services/besttime";
+import { listReposts } from "../services/reposts";
 import { MetaError } from "../services/meta";
 import { TelegramError } from "../services/telegram";
 import {
@@ -154,6 +155,18 @@ function build(author: "owner" | "claude") {
         const post = isDirectPost(id) ? await retryDirect(c.env.DB, id) : await retryPost(apiKey(c) ?? "", c.env.DB, id);
         await audit(c.env.DB, `post retry (${author})`, c.req.param("id"));
         return c.json({ post });
+      } catch (e: unknown) {
+        return fail(c, e);
+      }
+    })
+    // Повтор роликов с галочкой «можно повторять»
+    .get("/reposts", async (c) => {
+      try {
+        const accounts = await listAccounts(c.env.DB);
+        const replaced = new Set(accounts.map((a) => a.replaces).filter((x): x is string => !!x));
+        const buffer = apiKey(c) ? await listChannels(apiKey(c) ?? "", c.env.DB).catch(() => []) : [];
+        const channels = [...accounts.map((a) => ({ id: a.id, replaces: a.replaces })), ...buffer.filter((b) => !replaced.has(b.id)).map((b) => ({ id: b.id, replaces: null }))];
+        return c.json(await listReposts(c.env.DB, channels));
       } catch (e: unknown) {
         return fail(c, e);
       }

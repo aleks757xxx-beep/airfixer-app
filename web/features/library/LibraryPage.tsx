@@ -1,13 +1,14 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MAX_UPLOAD_BYTES, NOTE_MAX, type MediaItem } from "../../../shared/schemas";
-import { mediaKey, uploadVideo, useDeleteMedia, useMediaList, useSaveNote } from "../../api/media";
+import { mediaKey, uploadVideo, useDeleteMedia, useMediaList, useSaveNote, useSetRepost } from "../../api/media";
 import { Card, Skeleton } from "../../components/ui/Card";
 import { formatBytes, formatDate, plural } from "../../lib/format";
 import { AskClaudeButton } from "../claude/askClaude";
 import { OrderForm } from "../orders/OrderForm";
 import { OrdersList } from "../orders/OrdersList";
 import { ComposeDialog } from "../publish/ComposeDialog";
+import { Reposts } from "./Reposts";
 
 interface UploadJob {
   id: string;
@@ -92,6 +93,25 @@ function NoteBlock({ item }: { item: MediaItem }) {
   );
 }
 
+/** Галочка «можно повторять» (не все ролики можно выкладывать повторно — решает владелец). */
+function RepostToggle({ item }: { item: MediaItem }) {
+  const set = useSetRepost();
+  const on = set.isPending ? set.variables.on : item.repostable === true;
+  return (
+    <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs">
+      <input
+        type="checkbox"
+        checked={on}
+        disabled={set.isPending}
+        onChange={(e) => set.mutate({ id: item.id, on: e.target.checked })}
+        className="h-4 w-4 accent-[var(--color-primary)]"
+      />
+      <span>Можно повторять</span>
+      {set.isError ? <span className="text-error">не сохранилось</span> : null}
+    </label>
+  );
+}
+
 function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: () => void; deleting: boolean }) {
   const [composing, setComposing] = useState(false);
   return (
@@ -111,6 +131,7 @@ function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: ()
           📅 Запланировать
         </button>
         {composing ? <ComposeDialog media={item} onClose={() => setComposing(false)} /> : null}
+        <RepostToggle item={item} />
         <NoteBlock item={item} />
         <AskClaudeButton item={item} className="mt-2 block text-xs font-semibold text-primary" />
         <button
@@ -220,6 +241,8 @@ export function LibraryPage() {
       </Card>
 
       <OrdersList />
+
+      <Reposts />
 
       {del.isError ? <p className="font-semibold text-error">{del.error.message}</p> : null}
 

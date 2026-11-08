@@ -11,7 +11,7 @@ import {
   type UploadPart,
   type UploadResult,
 } from "../../shared/schemas";
-import { apiGet, ApiRequestError } from "./client";
+import { apiGet, apiPut, ApiRequestError } from "./client";
 
 export const mediaKey = ["media"] as const;
 
@@ -126,5 +126,17 @@ export function useSaveNote() {
       throw errorFrom(res.status, data, "Не сохранилось");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: mediaKey }),
+  });
+}
+
+/** Галочка «можно повторять». */
+export function useSetRepost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, on }: { id: string; on: boolean }) => apiPut(`/media/${encodeURIComponent(id)}/repost`, MediaItemResultSchema, { on }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: mediaKey });
+      void qc.invalidateQueries({ queryKey: ["reposts"] });
+    },
   });
 }

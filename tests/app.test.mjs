@@ -273,6 +273,41 @@ describe("лучшее время", () => {
   });
 });
 
+describe("повтор роликов", () => {
+  test("только с галочкой; куда можно сразу, куда — через 90 дней; лучший результат", async () => {
+    const day = 86400000;
+    const fresh = await s.upload("Второй ролик.mp4");
+    const list0 = await s.api("/api/v2/ingest/agent/publish/reposts", { agent: true });
+    assert.equal(list0.data.items.length, 0, "без галочки ролика в списке нет");
+    for (const id of [media.id, fresh.id]) assert.equal((await s.api(`/api/v2/media/${id}/repost`, { method: "PUT", cookie, body: { on: true } })).status, 200);
+    const lib = await s.api("/api/v2/media", { cookie });
+    assert.equal(lib.data.items.find((m) => m.id === media.id).repostable, true);
+    // второй ролик выходил в Facebook 100 дней назад — уже можно снова
+    const old = Date.now() - 100 * day;
+    s.sql(`INSERT INTO direct_posts (id, account_id, media_id, text, due_at, status, author, created_at, updated_at, sent_at, views_24h, notified_status) VALUES ('dp_old_rep', 'fb:p1', '${fresh.id}', 'Старая подпись', ${old}, 'sent', 'owner', ${old}, ${old}, ${old}, 500, 'sent')`);
+    const r = await s.api("/api/v2/ingest/agent/publish/reposts", { agent: true });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.gapDays, 90);
+    const a = r.data.items.find((i) => i.media.id === media.id);
+    const b = r.data.items.find((i) => i.media.id === fresh.id);
+    // первый ролик недавно выходил в Instagram и Facebook — туда позже
+    assert.ok(!a.ready.includes("ig:ig1") && !a.ready.includes("fb:p1"), JSON.stringify(a.ready));
+    const igLater = a.later.find((l) => l.channelId === "ig:ig1");
+    assert.ok(igLater && igLater.from > Date.now() + 80 * day);
+    assert.equal(a.best.channelId, "fb:p1");
+    assert.equal(a.best.views, 1000);
+    assert.ok(a.best.ratio > 1);
+    // второй — везде сразу, подпись прошлого раза подставляется
+    assert.ok(b.ready.includes("fb:p1") && b.ready.includes("ig:ig1"));
+    assert.equal(b.later.length, 0);
+    assert.equal(b.lastText, "Старая подпись");
+    assert.equal((await s.api(`/api/v2/media/${fresh.id}/repost`, { method: "PUT", cookie, body: { on: false } })).status, 200);
+    const r2 = await s.api("/api/v2/ingest/agent/publish/reposts", { agent: true });
+    assert.ok(!r2.data.items.some((i) => i.media.id === fresh.id), "галочку сняли — из списка ушёл");
+    s.sql("DELETE FROM direct_posts WHERE id = 'dp_old_rep'");
+  });
+});
+
 describe("уведомления о сбоях и работе Claude", () => {
   test("пост не вышел — сообщение с причиной и кнопкой", async () => {
     const extra = await s.upload("Удалится.mp4", 12_000);
