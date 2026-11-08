@@ -300,12 +300,53 @@ export async function fbVideoStatus(videoId: string, token: string): Promise<{ d
   return { done, error: err, link };
 }
 
-// ---- Статистика ----
-const Insights = z.object({ data: z.array(z.object({ name: z.string(), values: z.array(z.object({ value: z.number() })).optional(), total_value: z.object({ value: z.number() }).optional() })) });
-/** Цифры Reels в Instagram: просмотры, охват, лайки, комментарии, сохранения, репосты. */
-export async function igReelInsights(mediaId: string, token: string): Promise<Record<string, number>> {
-  const d = await graph("GET", `/${mediaId}/insights`, { metric: "views,reach,likes,comments,saved,shares", access_token: token }, Insights);
+// ---- Цифры опубликованных роликов ----
+const MediaInsights = z.object({
+  data: z.array(
+    z.object({
+      name: z.string(),
+      values: z.array(z.object({ value: z.unknown() })).optional(),
+      total_value: z.object({ value: z.unknown() }).optional(),
+    }),
+  ),
+});
+/** Значения метрик: число или объект с разбивкой (например, реакции по типам). */
+function insightValues(d: z.infer<typeof MediaInsights>): Map<string, unknown> {
+  return new Map(d.data.map((m) => [m.name, m.total_value?.value ?? m.values?.[0]?.value]));
+}
+
+/** Instagram Reels: просмотры, охват, лайки, комментарии, репосты, сохранения. */
+export async function igMediaInsights(mediaId: string, token: string): Promise<Record<string, number>> {
+  const d = await graph(
+    "GET",
+    `/${mediaId}/insights`,
+    { metric: "views,reach,likes,comments,shares,saved", access_token: token },
+    MediaInsights,
+  );
+  const v = insightValues(d);
+  const n = (k: string) => (typeof v.get(k) === "number" ? (v.get(k) as number) : 0);
+  return { views: n("views"), reach: n("reach"), reactions: n("likes"), comments: n("comments"), shares: n("shares"), saves: n("saved") };
+}
+
+/** Facebook Reels: всё, что отдаёт video_insights, сводим к общим названиям. */
+export async function fbReelInsights(videoId: string, token: string): Promise<Record<string, number>> {
+  const d = await graph("GET", `/${videoId}/video_insights`, { access_token: token }, MediaInsights);
+  const v = insightValues(d);
+  const num = (k: string) => (typeof v.get(k) === "number" ? (v.get(k) as number) : undefined);
+  const sum = (k: string) => {
+    const o = v.get(k);
+    return o && typeof o === "object" ? Object.values(o as Record<string, unknown>).reduce<number>((s, x) => s + (typeof x === "number" ? x : 0), 0) : undefined;
+  };
+  const social = v.get("post_video_social_actions");
+  const so = social && typeof social === "object" ? (social as Record<string, unknown>) : {};
   const out: Record<string, number> = {};
-  for (const m of d.data) out[m.name] = m.total_value?.value ?? m.values?.[0]?.value ?? 0;
+  const views = num("blue_reels_play_count") ?? num("fb_reels_total_plays") ?? num("post_video_views");
+  if (views !== undefined) out.views = views;
+  const reach = num("post_impressions_unique");
+  if (reach !== undefined) out.reach = reach;
+  const reactions = sum("post_video_likes_by_reaction_type");
+  if (reactions !== undefined) out.reactions = reactions;
+  if (typeof so.COMMENT === "number") out.comments = so.COMMENT;
+  if (typeof so.SHARE === "number") out.shares = so.SHARE;
   return out;
 }

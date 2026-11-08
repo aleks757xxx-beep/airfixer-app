@@ -13,7 +13,7 @@ export function setThreadsApiUrl(url: string | undefined): void {
 
 /** ID приложения Threads (сценарий «Доступ к Threads API» в приложении Meta «PostFixer»; не секрет). */
 export const THREADS_APP_ID_DEFAULT = "1659729995690076";
-export const THREADS_SCOPES = "threads_basic,threads_content_publish";
+export const THREADS_SCOPES = "threads_basic,threads_content_publish,threads_manage_insights";
 /** Долгий ключ живёт 60 дней; продлеваем, когда ему больше недели. */
 export const THREADS_TOKEN_TTL_MS = 60 * 86_400_000;
 
@@ -125,4 +125,17 @@ export async function threadsPublish(userId: string, token: string, containerId:
     permalink: undefined,
   }));
   return { id: d.id, link: info.permalink ?? null };
+}
+
+/** Цифры поста (нужно право threads_manage_insights). */
+export async function threadsInsights(mediaId: string, token: string): Promise<Record<string, number>> {
+  const d = await call(
+    "GET",
+    `/v1.0/${mediaId}/insights`,
+    { metric: "views,likes,replies,reposts,quotes,shares", access_token: token },
+    z.object({ data: z.array(z.object({ name: z.string(), values: z.array(z.object({ value: z.number() })).optional(), total_value: z.object({ value: z.number() }).optional() })) }),
+  );
+  const v = new Map(d.data.map((m) => [m.name, m.total_value?.value ?? m.values?.[0]?.value ?? 0]));
+  const n = (k: string) => v.get(k) ?? 0;
+  return { views: n("views"), reactions: n("likes"), comments: n("replies"), shares: n("reposts") + n("quotes") + n("shares") };
 }

@@ -17,7 +17,7 @@ import {
 import { accountToChannel, disconnectAccount, listAccounts, saveInstagramLogin, saveMetaAccounts, saveTelegramChannel, saveThreadsAccount, saveYoutubeChannel, setSlots } from "../services/direct";
 import { TelegramError, chatByAddress, getMe, recentChannels } from "../services/telegram";
 import { listChannels } from "../services/publish";
-import { YoutubeError, exchangeGoogleCode, googleLoginUrl, myChannels } from "../services/youtube";
+import { YoutubeError, exchangeGoogleCode, googleClientId, googleLoginUrl, myChannels } from "../services/youtube";
 import { THREADS_APP_ID_DEFAULT, ThreadsError, exchangeThreadsCode, threadsLoginUrl, threadsMe } from "../services/threads";
 import { migrated } from "./media";
 
@@ -31,11 +31,8 @@ const igConfigured = (env: { META_IG_CONFIG_ID?: string; META_APP_SECRET?: strin
 const appId = (env: { META_APP_ID?: string }) => env.META_APP_ID?.trim() || META_APP_ID_DEFAULT;
 /** Google (YouTube): свой адрес возврата. */
 const ytRedirectUri = (url: string) => `https://${new URL(url).host}/api/v2/connect/youtube/callback`;
-const googleClientId = (env: { GOOGLE_CLIENT_ID?: string }) => env.GOOGLE_CLIENT_ID?.trim() || GOOGLE_CLIENT_ID_DEFAULT;
 const ytConfigured = (env: { GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; TOKEN_KEY?: string }) =>
   !!(googleClientId(env) && env.GOOGLE_CLIENT_SECRET?.trim() && env.TOKEN_KEY);
-/** ID клиента OAuth в Google Cloud (не секрет; проект PostFixer). */
-const GOOGLE_CLIENT_ID_DEFAULT = "310148509374-32vop8u1otmntakf7tgl0upnfmd16hcg.apps.googleusercontent.com";
 
 /** Threads: свой ID приложения и свой адрес возврата. */
 const thRedirectUri = (url: string) => `https://${new URL(url).host}/api/v2/connect/threads/callback`;

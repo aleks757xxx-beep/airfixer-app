@@ -5,6 +5,8 @@ import { open, seal } from "../lib/secretbox";
 import {
   MetaError,
   fbPublishReel,
+  fbReelInsights,
+  igMediaInsights,
   fbVideoStatus,
   igComment,
   igContainerStatus,
@@ -13,8 +15,8 @@ import {
   type MetaPage,
 } from "./meta";
 import { TelegramError, sendVideo, type TgChat } from "./telegram";
-import { THREADS_TOKEN_TTL_MS, ThreadsError, refreshThreadsToken, threadsContainerStatus, threadsCreateVideo, threadsPublish } from "./threads";
-import { YT_CHUNK, YoutubeError, refreshGoogleToken, startUpload, uploadChunk, uploadState, youtubeLink, youtubeTitle } from "./youtube";
+import { THREADS_TOKEN_TTL_MS, ThreadsError, refreshThreadsToken, threadsContainerStatus, threadsCreateVideo, threadsInsights, threadsPublish } from "./threads";
+import { YT_CHUNK, YoutubeError, googleClientId, refreshGoogleToken, videoStatistics, startUpload, uploadChunk, uploadState, youtubeLink, youtubeTitle } from "./youtube";
 import { readSettings } from "../routes/settings";
 
 /** Прямая публикация (без Buffer): аккаунты, своя очередь со слотами, отправка к сроку (cron). */
@@ -530,9 +532,9 @@ async function stepTelegram(env: Env, p: PostRow, a: AccountRow): Promise<void> 
  */
 async function stepYoutube(env: Env, p: PostRow, a: AccountRow): Promise<void> {
   const db = env.DB;
-  const clientId = env.GOOGLE_CLIENT_ID?.trim();
+  const clientId = googleClientId(env);
   const secret = env.GOOGLE_CLIENT_SECRET?.trim();
-  if (!clientId || !secret) return fail(db, p, "Не заданы GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET в Cloudflare");
+  if (!secret) return fail(db, p, "Не задан GOOGLE_CLIENT_SECRET в Cloudflare");
   const m = await db.prepare("SELECT r2_key, size FROM media WHERE id = ? AND deleted_at IS NULL").bind(p.media_id).first<{ r2_key: string; size: number }>();
   if (!m) return fail(db, p, "Ролик удалён из библиотеки");
   const now = Date.now();
@@ -600,4 +602,74 @@ export async function processDirectQueue(env: Env): Promise<number> {
     }
   }
   return rows.results.length;
+}
+
+// ---- Цифры прямых постов (вместо статистики Buffer) ----
+const METRIC_NAMES: Record<string, string> = {
+  views: "Video Views",
+  reach: "Reach",
+  reactions: "Reactions",
+  comments: "Comments",
+  shares: "Shares",
+  saves: "Saves",
+};
+const HOUR = 3_600_000;
+
+/** Цифры одного поста из соцсети. Telegram ботам просмотры не отдаёт. */
+async function fetchMetrics(env: Env, a: AccountRow, p: PostRow): Promise<Record<string, number> | null> {
+  if (!p.external_id) return null;
+  if (a.service === "telegram") return null;
+  if (a.service === "youtube") {
+    const clientId = googleClientId(env);
+    const secret = env.GOOGLE_CLIENT_SECRET?.trim();
+    if (!secret) return null;
+    const access = await refreshGoogleToken(clientId, secret, await open(env.TOKEN_KEY, a.token_enc));
+    return videoStatistics(access, p.external_id);
+  }
+  const token = await open(env.TOKEN_KEY, a.token_enc);
+  if (a.service === "instagram") return igMediaInsights(p.external_id, token);
+  if (a.service === "facebook") return fbReelInsights(p.external_id, token);
+  if (a.service === "threads") return threadsInsights(p.external_id, token);
+  return null;
+}
+
+/**
+ * Обновить цифры нескольких опубликованных постов (вызывается каждую минуту, по чуть-чуть):
+ * первая неделя — раз в 3 часа, дальше до 90 дней — раз в сутки.
+ */
+export async function collectDirectMetrics(env: Env, limit = 3): Promise<number> {
+  const now = Date.now();
+  const rows = await env.DB.prepare(
+    `SELECT p.* FROM direct_posts p JOIN direct_accounts a ON a.id = p.account_id
+     WHERE p.status = 'sent' AND a.service != 'telegram' AND p.external_id IS NOT NULL
+       AND p.sent_at > ? AND p.sent_at < ?
+       AND (p.metrics_updated_at IS NULL OR (p.sent_at > ? AND p.metrics_updated_at < ?) OR p.metrics_updated_at < ?)
+     ORDER BY p.metrics_updated_at IS NOT NULL, p.metrics_updated_at LIMIT ?`,
+  )
+    .bind(now - 90 * 24 * HOUR, now - HOUR / 2, now - 7 * 24 * HOUR, now - 3 * HOUR, now - 24 * HOUR, limit)
+    .all<PostRow & { metrics_updated_at: number | null }>();
+  let n = 0;
+  for (const p of rows.results) {
+    const a = await env.DB.prepare("SELECT * FROM direct_accounts WHERE id = ?").bind(p.account_id).first<AccountRow>();
+    let values: Record<string, number> | null = null;
+    try {
+      if (a) values = await fetchMetrics(env, a, p);
+    } catch (e: unknown) {
+      console.error("metrics", p.id, e instanceof Error ? e.message : e); // без прав или пост удалён — попробуем в следующий раз
+    }
+    let json: string | null = null;
+    if (values) {
+      const v = values;
+      const list = Object.entries(v).map(([type, value]) => ({ type, name: METRIC_NAMES[type] ?? type, value, unit: "count" }));
+      const views = v.views ?? 0;
+      if (views > 0) {
+        const eng = ((v.reactions ?? 0) + (v.comments ?? 0) + (v.shares ?? 0) + (v.saves ?? 0)) / views;
+        list.push({ type: "engagementRate", name: "Eng. Rate", value: Math.round(eng * 10_000) / 100, unit: "percentage" });
+      }
+      json = JSON.stringify(list);
+      n++;
+    }
+    await env.DB.prepare("UPDATE direct_posts SET metrics = COALESCE(?, metrics), metrics_updated_at = ? WHERE id = ?").bind(json, Date.now(), p.id).run();
+  }
+  return n;
 }

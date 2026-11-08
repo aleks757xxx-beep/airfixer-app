@@ -28,7 +28,7 @@ const has = (p: StatPost, type: string) => p.metrics.some((m) => m.type === type
 const views = (p: StatPost) => metric(p, "views") || metric(p, "impressions") || metric(p, "reach");
 const fmt = (n: number) => (n >= 10_000 ? `${(n / 1000).toFixed(0)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
 
-/** Статистика опубликованных постов (цифры Buffer, экспериментально). */
+/** Статистика опубликованных постов: прямые соцсети + Buffer (TikTok, Google) + сохранённая история Buffer. */
 export function StatsPage() {
   const [days, setDays] = useState<number>(30);
   const [range] = useState(() => ({ to: Date.now() }));
@@ -86,14 +86,14 @@ export function StatsPage() {
           ))}
         </div>
       </div>
-      <p className="text-xs text-on-surface-variant">Цифры из Buffer (у Buffer это пока экспериментальная функция), обновляются раз в несколько часов.</p>
+      <p className="text-xs text-on-surface-variant">Цифры берутся прямо из соцсетей (TikTok и Google — через Buffer), обновляются раз в несколько часов. Telegram просмотры не отдаёт.</p>
 
       {q.isPending ? (
         <Skeleton className="h-64" />
       ) : q.isError ? (
         <Card>
           <p className="text-error">{q.error.message}</p>
-          <p className="mt-1 text-sm text-on-surface-variant">Если Buffer не отдаёт статистику для этого ключа — скажите Claude, проверим настройки ключа.</p>
+          <p className="mt-1 text-sm text-on-surface-variant">Если цифры не появляются — скажите Claude, проверим.</p>
         </Card>
       ) : items.length === 0 ? (
         <Card>

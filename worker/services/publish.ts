@@ -454,35 +454,41 @@ const MetricPage = z.object({
   posts: z.object({ edges: z.array(z.object({ node: MetricPost })), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
 });
 
-/** Опубликованные посты за период с цифрами (кэш 30 минут). */
+/** Опубликованные посты Buffer за период с цифрами (кэш 30 минут). */
 export function postStats(apiKey: string, db: D1Database, from: number, to: number): Promise<Stats> {
-  return cached(db, `stats:${from}:${to}`, 30 * 60_000, async () => {
-    const org = await organizationId(apiKey);
-    const nodes: z.infer<typeof MetricPost>[] = [];
-    let after: string | null = null;
-    for (let page = 0; page < 3; page++) {
-      const d: z.infer<typeof MetricPage> = await bufferQuery(
-        apiKey,
-        `query($org: OrganizationId!, $filter: PostsFiltersInput, $after: String) {
-          posts(first: 100, after: $after, input: { organizationId: $org, filter: $filter, sort: [{ field: dueAt, direction: desc }] }) {
-            edges { node { ${POST_FIELDS} metrics { type name value unit } metricsUpdatedAt } } pageInfo { hasNextPage endCursor } } }`,
-        MetricPage,
-        { org, after, filter: { status: ["sent"], dueAt: { start: new Date(from).toISOString(), end: new Date(to).toISOString() } } },
-      );
-      nodes.push(...d.posts.edges.map((e) => e.node));
-      if (!d.posts.pageInfo.hasNextPage || !d.posts.pageInfo.endCursor) break;
-      after = d.posts.pageInfo.endCursor;
-    }
-    const media = await mediaForPosts(db, nodes.map((n) => n.id));
-    const items: StatPost[] = nodes.map((n) => ({ ...toPost(n, media), metrics: n.metrics ?? [], metricsUpdatedAt: ms(n.metricsUpdatedAt) }));
-    return { items, updatedAt: Date.now() };
-  });
+  return cached(db, `stats:${from}:${to}`, 30 * 60_000, () => loadBufferStats(apiKey, db, from, to));
+}
+/** То же без кэша (для копии истории). */
+export async function loadBufferStats(apiKey: string, db: D1Database, from: number, to: number): Promise<Stats> {
+  const org = await organizationId(apiKey);
+  const nodes: z.infer<typeof MetricPost>[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < 5; page++) {
+    const d: z.infer<typeof MetricPage> = await bufferQuery(
+      apiKey,
+      `query($org: OrganizationId!, $filter: PostsFiltersInput, $after: String) {
+        posts(first: 100, after: $after, input: { organizationId: $org, filter: $filter, sort: [{ field: dueAt, direction: desc }] }) {
+          edges { node { ${POST_FIELDS} metrics { type name value unit } metricsUpdatedAt } } pageInfo { hasNextPage endCursor } } }`,
+      MetricPage,
+      { org, after, filter: { status: ["sent"], dueAt: { start: new Date(from).toISOString(), end: new Date(to).toISOString() } } },
+    );
+    nodes.push(...d.posts.edges.map((e) => e.node));
+    if (!d.posts.pageInfo.hasNextPage || !d.posts.pageInfo.endCursor) break;
+    after = d.posts.pageInfo.endCursor;
+  }
+  const media = await mediaForPosts(db, nodes.map((n) => n.id));
+  const items: StatPost[] = nodes.map((n) => ({ ...toPost(n, media), metrics: n.metrics ?? [], metricsUpdatedAt: ms(n.metricsUpdatedAt) }));
+  return { items, updatedAt: Date.now() };
 }
 
-// ---- Вставки (сниппеты Buffer) ----
+// ---- Вставки: хранятся в PostFixer (D1); старые один раз переносятся из Buffer ----
 const SnippetRaw = z.object({ id: z.string(), name: z.string(), text: z.string() });
-export function listSnippets(apiKey: string, db: D1Database): Promise<Snippet[]> {
-  return cached(db, "snippets", 10 * 60_000, async () => {
+const IMPORTED_KEY = "snippets_imported";
+async function importBufferSnippets(apiKey: string | null, db: D1Database): Promise<void> {
+  const done = await db.prepare("SELECT 1 AS x FROM app_settings WHERE key = ?").bind(IMPORTED_KEY).first();
+  if (done) return;
+  let items: Snippet[] = [];
+  if (apiKey) {
     const org = await organizationId(apiKey);
     const d = await bufferQuery(
       apiKey,
@@ -490,46 +496,37 @@ export function listSnippets(apiKey: string, db: D1Database): Promise<Snippet[]>
       z.object({ snippets: z.object({ edges: z.array(z.object({ node: SnippetRaw })) }) }),
       { org },
     );
-    return d.snippets.edges.map((e) => e.node);
-  });
-}
-const dropSnippets = (db: D1Database) => db.prepare("DELETE FROM buffer_cache WHERE key = 'snippets'").run();
-
-export async function createSnippet(apiKey: string, db: D1Database, input: SnippetInput): Promise<Snippet> {
-  const org = await organizationId(apiKey);
-  const d = await bufferQuery(
-    apiKey,
-    `mutation($input: CreateSnippetInput!) { createSnippet(input: $input) { __typename ... on CreateSnippetSuccess { snippet { id name text } } ... on VoidMutationError { message } } }`,
-    z.object({ createSnippet: z.object({ __typename: z.string(), snippet: SnippetRaw.optional(), message: z.string().optional() }) }),
-    { input: { organizationId: org, name: input.name, text: input.text } },
-  );
-  if (!d.createSnippet.snippet) throw new BufferError(d.createSnippet.message ?? "Не удалось сохранить вставку");
-  await dropSnippets(db);
-  return d.createSnippet.snippet;
+    items = d.snippets.edges.map((e) => e.node);
+  }
+  const now = Date.now();
+  await db.batch([
+    ...items.map((i) =>
+      db.prepare("INSERT OR IGNORE INTO snippets (id, name, text, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind(`sn_${i.id}`, i.name, i.text, now, now),
+    ),
+    db.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO NOTHING").bind(IMPORTED_KEY, String(items.length), now),
+  ]);
 }
 
-export async function updateSnippet(apiKey: string, db: D1Database, id: string, input: SnippetInput): Promise<void> {
-  const org = await organizationId(apiKey);
-  const d = await bufferQuery(
-    apiKey,
-    `mutation($input: UpdateSnippetInput!) { updateSnippet(input: $input) { __typename ... on VoidMutationError { message } } }`,
-    z.object({ updateSnippet: z.object({ __typename: z.string(), message: z.string().optional() }) }),
-    { input: { id, organizationId: org, name: input.name, text: input.text } },
-  );
-  if (d.updateSnippet.message) throw new BufferError(d.updateSnippet.message);
-  await dropSnippets(db);
+export async function listSnippets(apiKey: string | null, db: D1Database): Promise<Snippet[]> {
+  await importBufferSnippets(apiKey, db).catch((e: unknown) => console.error("snippets import", e)); // Buffer недоступен — повторим позже
+  const r = await db.prepare("SELECT id, name, text FROM snippets ORDER BY name COLLATE NOCASE").all<Snippet>();
+  return r.results;
 }
 
-export async function deleteSnippet(apiKey: string, db: D1Database, id: string): Promise<void> {
-  const org = await organizationId(apiKey);
-  const d = await bufferQuery(
-    apiKey,
-    `mutation($input: DeleteSnippetInput!) { deleteSnippet(input: $input) { __typename ... on DeleteSnippetSuccess { id } ... on VoidMutationError { message } } }`,
-    z.object({ deleteSnippet: z.object({ __typename: z.string(), id: z.string().optional(), message: z.string().optional() }) }),
-    { input: { id, organizationId: org } },
-  );
-  if (!d.deleteSnippet.id) throw new BufferError(d.deleteSnippet.message ?? "Не удалось удалить вставку");
-  await dropSnippets(db);
+export async function createSnippet(db: D1Database, input: SnippetInput): Promise<Snippet> {
+  const id = `sn_${crypto.randomUUID()}`;
+  const now = Date.now();
+  await db.prepare("INSERT INTO snippets (id, name, text, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").bind(id, input.name, input.text, now, now).run();
+  return { id, name: input.name, text: input.text };
+}
+
+export async function updateSnippet(db: D1Database, id: string, input: SnippetInput): Promise<void> {
+  const r = await db.prepare("UPDATE snippets SET name = ?, text = ?, updated_at = ? WHERE id = ?").bind(input.name, input.text, Date.now(), id).run();
+  if (!r.meta.changes) throw new BufferError("Вставка не найдена");
+}
+
+export async function deleteSnippet(db: D1Database, id: string): Promise<void> {
+  await db.prepare("DELETE FROM snippets WHERE id = ?").bind(id).run();
 }
 
 // ---- Лимиты тарифа (только чтение) ----

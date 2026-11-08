@@ -15,6 +15,10 @@ export function setGoogleApiUrl(url: string | undefined): void {
   API = OAUTH;
 }
 
+/** ID клиента OAuth в Google Cloud (проект postfixer; не секрет). */
+export const GOOGLE_CLIENT_ID_DEFAULT = "310148509374-32vop8u1otmntakf7tgl0upnfmd16hcg.apps.googleusercontent.com";
+export const googleClientId = (env: { GOOGLE_CLIENT_ID?: string }) => env.GOOGLE_CLIENT_ID?.trim() || GOOGLE_CLIENT_ID_DEFAULT;
+
 export const YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
 /** Кусок загрузки: кратно 256 КБ, как требует YouTube. */
 export const YT_CHUNK = 64 * 1024 * 1024;
@@ -172,3 +176,15 @@ export async function uploadChunk(uploadUrl: string, body: ReadableStream, start
 }
 
 export const youtubeLink = (videoId: string) => `https://youtu.be/${videoId}`;
+
+/** Цифры ролика: просмотры, лайки, комментарии. */
+export async function videoStatistics(accessToken: string, videoId: string): Promise<Record<string, number>> {
+  const res = await fetch(`${API}/youtube/v3/videos?part=statistics&id=${encodeURIComponent(videoId)}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const d = await json(
+    res,
+    z.object({ items: z.array(z.object({ statistics: z.object({ viewCount: z.string().optional(), likeCount: z.string().optional(), commentCount: z.string().optional() }) })).optional() }),
+  );
+  const s = d.items?.[0]?.statistics;
+  if (!s) throw new YoutubeError("YouTube: ролик не найден (удалён или скрыт)");
+  return { views: Number(s.viewCount ?? 0), reactions: Number(s.likeCount ?? 0), comments: Number(s.commentCount ?? 0) };
+}

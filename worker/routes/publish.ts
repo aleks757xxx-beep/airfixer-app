@@ -13,13 +13,13 @@ import {
   listPosts,
   listSnippets,
   movePost,
-  postStats,
   bufferLimits,
   retryPost,
   sharePostNow,
   updateSnippet,
 } from "../services/publish";
 import { migrated, uploadToken } from "./media";
+import { allStats, archiveBufferHistory } from "../services/history";
 import { MetaError } from "../services/meta";
 import { TelegramError } from "../services/telegram";
 import {
@@ -146,12 +146,12 @@ function build(author: "owner" | "claude") {
         return fail(c, e);
       }
     })
-    .get("/stats", needKey, async (c) => {
+    .get("/stats", async (c) => {
       const from = Number(c.req.query("from"));
       const to = Number(c.req.query("to"));
       if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 93 * 24 * 3600 * 1000) return c.json({ error: "Неверный период" }, 400);
       try {
-        return c.json(await postStats(apiKey(c) ?? "", c.env.DB, from, to));
+        return c.json(await allStats(c.env, from, to));
       } catch (e: unknown) {
         return fail(c, e);
       }
@@ -163,36 +163,36 @@ function build(author: "owner" | "claude") {
         return fail(c, e);
       }
     })
-    .get("/snippets", needKey, async (c) => {
+    .get("/snippets", async (c) => {
       try {
-        const body: SnippetList = { items: await listSnippets(apiKey(c) ?? "", c.env.DB) };
+        const body: SnippetList = { items: await listSnippets(apiKey(c), c.env.DB) };
         return c.json(body);
       } catch (e: unknown) {
         return fail(c, e);
       }
     })
-    .post("/snippets", needKey, async (c) => {
+    .post("/snippets", async (c) => {
       const p = SnippetInputSchema.safeParse(await c.req.json().catch(() => null));
       if (!p.success) return c.json({ error: p.error.issues[0]?.message ?? "Проверьте вставку" }, 400);
       try {
-        return c.json({ snippet: await createSnippet(apiKey(c) ?? "", c.env.DB, p.data) });
+        return c.json({ snippet: await createSnippet(c.env.DB, p.data) });
       } catch (e: unknown) {
         return fail(c, e);
       }
     })
-    .put("/snippets/:id", needKey, async (c) => {
+    .put("/snippets/:id", async (c) => {
       const p = SnippetInputSchema.safeParse(await c.req.json().catch(() => null));
       if (!p.success) return c.json({ error: p.error.issues[0]?.message ?? "Проверьте вставку" }, 400);
       try {
-        await updateSnippet(apiKey(c) ?? "", c.env.DB, c.req.param("id"), p.data);
+        await updateSnippet(c.env.DB, c.req.param("id"), p.data);
         return c.json({ ok: true as const });
       } catch (e: unknown) {
         return fail(c, e);
       }
     })
-    .delete("/snippets/:id", needKey, async (c) => {
+    .delete("/snippets/:id", async (c) => {
       try {
-        await deleteSnippet(apiKey(c) ?? "", c.env.DB, c.req.param("id"));
+        await deleteSnippet(c.env.DB, c.req.param("id"));
         return c.json({ ok: true as const });
       } catch (e: unknown) {
         return fail(c, e);
@@ -231,4 +231,19 @@ function build(author: "owner" | "claude") {
 /** Для владельца (после входа). */
 export const publish = new Hono<AppBindings>().use("*", migrated).route("/", build("owner"));
 /** Для Claude (по токену). */
-export const publishAgent = new Hono<AppBindings>().use("*", uploadToken).use("*", migrated).route("/", build("claude"));
+export const publishAgent = new Hono<AppBindings>()
+  .use("*", uploadToken)
+  .use("*", migrated)
+  // Для Claude: сохранить историю постов Buffer с цифрами (перед отключением каналов в Buffer)
+  .post("/archive", needKey, async (c) => {
+    const days = Math.min(Math.max(Number(c.req.query("days")) || 1100, 1), 1500);
+    try {
+      const n = await archiveBufferHistory(apiKey(c) ?? "", c.env.DB, days);
+      const total = await c.env.DB.prepare("SELECT COUNT(*) AS n, MIN(due_at) AS first FROM buffer_archive").first<{ n: number; first: number | null }>();
+      await audit(c.env.DB, "buffer archive (claude)", `${n} постов за ${days} дн., всего в копии ${total?.n ?? 0}`);
+      return c.json({ saved: n, total: total?.n ?? 0, first: total?.first ?? null });
+    } catch (e: unknown) {
+      return fail(c, e);
+    }
+  })
+  .route("/", build("claude"));

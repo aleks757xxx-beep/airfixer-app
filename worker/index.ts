@@ -17,7 +17,8 @@ import { setTgApiUrl } from "./services/telegram";
 import { setGoogleApiUrl } from "./services/youtube";
 import { setThreadsApiUrl } from "./services/threads";
 import { connect, connectCallback } from "./routes/connect";
-import { processDirectQueue, refreshThreadsTokens } from "./services/direct";
+import { collectDirectMetrics, processDirectQueue, refreshThreadsTokens } from "./services/direct";
+import { archiveBufferHistory } from "./services/history";
 import { fireRoutine } from "./services/routine";
 
 /**
@@ -88,6 +89,8 @@ export default {
       // Каждую минуту: прямые посты (Instagram, Facebook), у которых подошло время
       const n = await processDirectQueue(env);
       if (n) console.log("direct queue: processed", n);
+      const m = await collectDirectMetrics(env).catch((e: unknown) => (console.error("metrics", e), 0));
+      if (m) console.log("metrics: updated", m);
       if (await fireRoutine(env).catch((e: unknown) => (console.error("routine", e), false))) console.log("claude routine fired");
       return;
     }
@@ -97,5 +100,11 @@ export default {
     console.log("cleanup: aborted stale uploads", stale);
     const refreshed = await refreshThreadsTokens(env).catch((e: unknown) => (console.error("threads refresh", e), 0));
     if (refreshed) console.log("threads: tokens refreshed", refreshed);
+    // копия свежих постов Buffer с цифрами (Buffer стирает историю при отключении канала)
+    const key = env.BUFFER_API_KEY?.trim();
+    if (key) {
+      const saved = await archiveBufferHistory(key, env.DB, 120).catch((e: unknown) => (console.error("buffer archive", e), 0));
+      console.log("buffer archive: saved", saved);
+    }
   },
 } satisfies ExportedHandler<Env>;
