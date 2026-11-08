@@ -24,7 +24,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="mx-auto max-w-md p-6 text-center">
         <p className="text-lg font-bold">Что-то пошло не так</p>
-        <p className="mt-2 text-sm text-slate-500 dark:text-white/60">{this.state.error.message}</p>
+        <p className="mt-2 text-sm text-slate-500 dark:text-on-surface-variant">{this.state.error.message}</p>
         <button
           type="button"
           className="mt-4 rounded-full bg-tg px-5 py-2.5 font-semibold text-white"

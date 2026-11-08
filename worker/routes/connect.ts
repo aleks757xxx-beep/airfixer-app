@@ -49,7 +49,7 @@ export const connect = new Hono<AppBindings>()
   })
   // Кнопка «Подключить Instagram без страницы» → вход в Instagram
   .get("/instagram/start", async (c) => {
-    if (!igConfigured(c.env)) return c.redirect("/#/status?connect_error=" + encodeURIComponent("Единый вход Instagram ещё не настроен"));
+    if (!igConfigured(c.env)) return c.redirect("/#/connections?connect_error=" + encodeURIComponent("Единый вход Instagram ещё не настроен"));
     const state = randomToken(24);
     await c.env.DB.prepare("DELETE FROM oauth_states WHERE created_at < ?").bind(Date.now() - STATE_TTL_MS).run();
     await c.env.DB.prepare("INSERT INTO oauth_states (state, provider, created_at) VALUES (?, 'instagram', ?)").bind(state, Date.now()).run();
@@ -75,7 +75,7 @@ export const connect = new Hono<AppBindings>()
   })
   // Кнопка «Подключить Instagram и Facebook» → вход в Facebook
   .get("/meta/start", async (c) => {
-    if (!c.env.META_APP_SECRET || !c.env.TOKEN_KEY) return c.redirect("/#/status?connect_error=" + encodeURIComponent("Не заданы META_APP_SECRET / TOKEN_KEY"));
+    if (!c.env.META_APP_SECRET || !c.env.TOKEN_KEY) return c.redirect("/#/connections?connect_error=" + encodeURIComponent("Не заданы META_APP_SECRET / TOKEN_KEY"));
     const state = randomToken(24);
     await c.env.DB.prepare("DELETE FROM oauth_states WHERE created_at < ?").bind(Date.now() - STATE_TTL_MS).run();
     await c.env.DB.prepare("INSERT INTO oauth_states (state, provider, created_at) VALUES (?, 'meta', ?)").bind(state, Date.now()).run();
@@ -100,7 +100,7 @@ export const connect = new Hono<AppBindings>()
 export const connectCallback = new Hono<AppBindings>().use("*", migrated);
 
 async function instagramCallback(c: Context<AppBindings>): Promise<Response> {
-  const back = (q: string) => c.redirect(`/#/status?${q}`);
+  const back = (q: string) => c.redirect(`/#/connections?${q}`);
   const code = c.req.query("code");
   if (!code) return back("connect_error=" + encodeURIComponent(c.req.query("error_description") ?? "Вход в Instagram отменён"));
   if (!igConfigured(c.env)) return back("connect_error=" + encodeURIComponent("Единый вход Instagram ещё не настроен"));
@@ -121,7 +121,7 @@ async function instagramCallback(c: Context<AppBindings>): Promise<Response> {
 }
 
 connectCallback.get("/meta/callback", async (c) => {
-  const back = (q: string) => c.redirect(`/#/status?${q}`);
+  const back = (q: string) => c.redirect(`/#/connections?${q}`);
   const state = c.req.query("state") ?? "";
   const code = c.req.query("code");
   const row = await c.env.DB.prepare("SELECT created_at, provider FROM oauth_states WHERE state = ?").bind(state).first<{ created_at: number; provider: string }>();

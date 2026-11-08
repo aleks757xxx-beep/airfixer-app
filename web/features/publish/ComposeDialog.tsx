@@ -15,7 +15,7 @@ const MODES: ReadonlyArray<{ mode: ShareMode; label: string; button: string; hin
 ];
 
 const input =
-  "w-full rounded-lg border border-white/15 bg-ink-deep p-2.5 text-sm text-white placeholder:text-white/35 focus:border-brand focus:outline-none";
+  "w-full rounded-lg border border-outline-variant bg-surface-container-lowest p-2.5 text-sm text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none";
 const titleFrom = (name: string) => name.replace(/\.[a-z0-9]+$/i, "").replace(/^\d+\s*/, "").slice(0, 100);
 const needsTitle = (s: string) => s === "youtube";
 
@@ -115,10 +115,10 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 md:items-center" role="dialog" aria-modal="true" aria-label="Новый пост">
-      <div className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-ink-card md:max-h-[92vh] md:rounded-3xl">
-        <header className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+      <div className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-surface-container md:max-h-[92vh] md:rounded-m3xl">
+        <header className="flex items-center gap-3 border-b border-outline-variant px-4 py-3">
           <h2 className="text-lg font-bold">Новый пост</h2>
-          <button type="button" onClick={onClose} className="ml-auto rounded-full px-3 py-1 text-white/60 hover:bg-white/10" aria-label="Закрыть">
+          <button type="button" onClick={onClose} className="ml-auto rounded-full px-3 py-1 text-on-surface-variant hover:bg-surface-container-highest" aria-label="Закрыть">
             ✕
           </button>
         </header>
@@ -135,12 +135,12 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                   <li key={r.channelId} className="flex items-start gap-2 text-sm">
                     <ServiceBadge service={c?.service ?? ""} />
                     <span className="font-semibold">{c ? channelLabel(c) : r.channelId}</span>
-                    <span className={`ml-auto text-right ${r.ok ? "text-wa" : "text-red-400"}`}>{r.ok ? "✓" : r.error}</span>
+                    <span className={`ml-auto text-right ${r.ok ? "text-success" : "text-error"}`}>{r.ok ? "✓" : r.error}</span>
                   </li>
                 );
               })}
             </ul>
-            <button type="button" onClick={onClose} className="rounded-full bg-brand px-5 py-2 font-bold text-white">
+            <button type="button" onClick={onClose} className="rounded-full bg-primary px-5 py-2 font-bold text-on-primary">
               Закрыть
             </button>
           </div>
@@ -160,7 +160,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                     className="h-28 w-16 shrink-0 rounded-lg bg-black object-cover"
                   />
                 ) : (
-                  <div className="flex h-28 w-16 shrink-0 items-center justify-center rounded-lg bg-white/5 text-2xl">🎬</div>
+                  <div className="flex h-28 w-16 shrink-0 items-center justify-center rounded-lg bg-surface-container-high text-2xl">🎬</div>
                 )}
                 <label className="block min-w-0 flex-1 space-y-1 text-sm">
                   <span className="font-semibold">Ролик</span>
@@ -201,17 +201,17 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                     className="w-full accent-brand"
                     aria-label="Кадр обложки"
                   />
-                  <span className="block text-xs text-white/45">Двигайте ползунок — кадр показывается слева</span>
+                  <span className="block text-xs text-on-surface-variant">Двигайте ползунок — кадр показывается слева</span>
                 </label>
               ) : null}
 
               {/* Соцсети */}
               <div className="space-y-1.5">
                 <p className="text-sm font-semibold">Куда</p>
-                {channels.isPending ? <p className="text-sm text-white/50">Загружаю каналы Buffer…</p> : null}
-                {channels.isError ? <p className="text-sm text-red-400">{channels.error.message}</p> : null}
+                {channels.isPending ? <p className="text-sm text-on-surface-variant">Загружаю каналы Buffer…</p> : null}
+                {channels.isError ? <p className="text-sm text-error">{channels.error.message}</p> : null}
                 {locked.length > 0 ? (
-                  <p className="text-xs text-amber-300">
+                  <p className="text-xs text-warning">
                     🔒 Заблокированы тарифом Buffer: {locked.map((c) => channelLabel(c)).join(", ")} — в Buffer разрешено меньше каналов, чем подключено.
                   </p>
                 ) : null}
@@ -224,7 +224,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                         type="button"
                         aria-pressed={on}
                         onClick={() => toggle(c.id)}
-                        className={`flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs font-semibold ${on ? "bg-brand/25 text-white ring-1 ring-brand" : "bg-white/5 text-white/45"}`}
+                        className={`flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs font-semibold ${on ? "bg-primary/25 text-on-surface ring-1 ring-primary" : "bg-surface-container-high text-on-surface-variant"}`}
                       >
                         <ServiceBadge service={c.service} size="md" />
                         {channelLabel(c)}
@@ -241,7 +241,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                   <button
                     type="button"
                     onClick={() => setTab("all")}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === "all" ? "bg-white text-ink" : "bg-white/10 text-white/70"}`}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === "all" ? "bg-white text-ink" : "bg-surface-container-highest text-on-surface-variant"}`}
                   >
                     Общая подпись
                   </button>
@@ -250,7 +250,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                       key={c.id}
                       type="button"
                       onClick={() => setTab(c.id)}
-                      className={`flex items-center gap-1 rounded-full py-0.5 pl-0.5 pr-2.5 text-xs font-semibold ${tab === c.id ? "bg-white text-ink" : "bg-white/10 text-white/70"}`}
+                      className={`flex items-center gap-1 rounded-full py-0.5 pl-0.5 pr-2.5 text-xs font-semibold ${tab === c.id ? "bg-white text-ink" : "bg-surface-container-highest text-on-surface-variant"}`}
                     >
                       <ServiceBadge service={c.service} />
                       {custom[c.id] !== undefined ? "✎" : ""}
@@ -258,27 +258,27 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                   ))}
                 </div>
                 <div className="relative">
-                  <button type="button" onClick={() => setSnipMenu((v) => !v)} className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
+                  <button type="button" onClick={() => setSnipMenu((v) => !v)} className="rounded-full bg-surface-container-highest px-3 py-1 text-xs font-semibold">
                     # Вставки ▾
                   </button>
                   {snipMenu ? (
-                    <div className="absolute left-0 top-full z-10 mt-1 max-h-64 w-72 overflow-y-auto rounded-xl border border-white/10 bg-ink-deep p-1 shadow-xl">
-                      {snippets.isPending ? <p className="p-2 text-xs text-white/50">Загружаю…</p> : null}
-                      {snippets.isError ? <p className="p-2 text-xs text-red-400">{snippets.error.message}</p> : null}
+                    <div className="absolute left-0 top-full z-10 mt-1 max-h-64 w-72 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest p-1 shadow-xl">
+                      {snippets.isPending ? <p className="p-2 text-xs text-on-surface-variant">Загружаю…</p> : null}
+                      {snippets.isError ? <p className="p-2 text-xs text-error">{snippets.error.message}</p> : null}
                       {(snippets.data?.items ?? []).map((sn) => (
-                        <button key={sn.id} type="button" onClick={() => insertSnippet(sn.text)} className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-white/5">
+                        <button key={sn.id} type="button" onClick={() => insertSnippet(sn.text)} className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-surface-container-high">
                           <span className="block text-sm font-semibold">{sn.name}</span>
-                          <span className="line-clamp-1 block text-xs text-white/50">{sn.text}</span>
+                          <span className="line-clamp-1 block text-xs text-on-surface-variant">{sn.text}</span>
                         </button>
                       ))}
-                      {snippets.data?.items.length === 0 ? <p className="p-2 text-xs text-white/50">Вставок пока нет</p> : null}
+                      {snippets.data?.items.length === 0 ? <p className="p-2 text-xs text-on-surface-variant">Вставок пока нет</p> : null}
                       <button
                         type="button"
                         onClick={() => {
                           setSnipMenu(false);
                           setSnipManage(true);
                         }}
-                        className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-brand-light hover:bg-white/5"
+                        className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-primary hover:bg-surface-container-high"
                       >
                         ⚙ Управлять вставками
                       </button>
@@ -289,7 +289,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                   <textarea rows={6} value={baseText} onChange={(e) => setBaseText(e.target.value)} placeholder="Подпись для всех соцсетей" className={input} />
                 ) : (
                   <div className="space-y-1.5">
-                    <p className="text-xs text-white/55">
+                    <p className="text-xs text-on-surface-variant">
                       {channelLabel(tabChannel)}:{" "}
                       {custom[tabChannel.id] === undefined ? "сейчас берётся общая подпись" : "своя подпись для этой сети"}
                     </p>
@@ -306,21 +306,21 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                           const { [tabChannel.id]: _drop, ...rest } = custom;
                           setCustom(rest);
                         }}
-                        className="text-xs text-brand-light"
+                        className="text-xs text-primary"
                       >
                         ↺ Вернуть общую подпись
                       </button>
                     ) : null}
-                    <span className="block text-right text-xs text-white/45">
+                    <span className="block text-right text-xs text-on-surface-variant">
                       {textFor(tabChannel).length} / {TEXT_LIMITS[tabChannel.service] ?? 5000}
                     </span>
                   </div>
                 )}
                 {tooLong.length > 0 ? (
-                  <p className="text-xs text-red-400">Слишком длинно для: {tooLong.map((c) => channelLabel(c)).join(", ")}</p>
+                  <p className="text-xs text-error">Слишком длинно для: {tooLong.map((c) => channelLabel(c)).join(", ")}</p>
                 ) : null}
                 {tgNoCopy ? (
-                  <p className="text-xs text-amber-300">
+                  <p className="text-xs text-warning">
                     Telegram: ролик больше 50 МБ, а лёгкой копии нет. Пост встанет в очередь, но выйдет, только когда Claude положит копию «имя.tg.mp4» в
                     «Готовое».
                   </p>
@@ -361,7 +361,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                 <label className="block space-y-1 text-sm">
                   <span className="font-semibold">Название (YouTube, TikTok)</span>
                   <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} className={input} />
-                  {ytMissing ? <span className="text-xs text-red-400">Для YouTube нужно название</span> : null}
+                  {ytMissing ? <span className="text-xs text-error">Для YouTube нужно название</span> : null}
                 </label>
               ) : null}
 
@@ -375,25 +375,25 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                       type="button"
                       aria-pressed={mode === m.mode}
                       onClick={() => setMode(m.mode)}
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${mode === m.mode ? "bg-brand text-white" : "bg-white/10 text-white/75"}`}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${mode === m.mode ? "bg-primary text-on-primary" : "bg-surface-container-highest text-on-surface-variant"}`}
                     >
                       {m.label}
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-white/50">{modeInfo.hint}</p>
+                <p className="text-xs text-on-surface-variant">{modeInfo.hint}</p>
                 {mode === "schedule" ? (
                   <div className="flex gap-2">
                     <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} />
                     <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={`${input} w-32`} />
                   </div>
                 ) : null}
-                {mode === "schedule" && dueAt !== null && dueAt <= Date.now() ? <p className="text-xs text-red-400">Это время уже прошло</p> : null}
+                {mode === "schedule" && dueAt !== null && dueAt <= Date.now() ? <p className="text-xs text-error">Это время уже прошло</p> : null}
               </div>
             </div>
 
-            <footer className="flex items-center gap-3 border-t border-white/10 px-4 py-3">
-              {compose.isError ? <p className="min-w-0 flex-1 text-sm text-red-400">{compose.error.message}</p> : <span className="flex-1" />}
+            <footer className="flex items-center gap-3 border-t border-outline-variant px-4 py-3">
+              {compose.isError ? <p className="min-w-0 flex-1 text-sm text-error">{compose.error.message}</p> : <span className="flex-1" />}
               <button
                 type="button"
                 disabled={!canSend || compose.isPending}
@@ -401,7 +401,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
                   if (mode === "now" && !window.confirm("Опубликовать сразу во всех выбранных соцсетях?")) return;
                   submit();
                 }}
-                className="rounded-full bg-brand px-5 py-2.5 font-bold text-white disabled:opacity-40"
+                className="rounded-full bg-primary px-5 py-2.5 font-bold text-on-primary disabled:opacity-40"
               >
                 {compose.isPending ? "Отправляю в Buffer…" : modeInfo.button}
               </button>

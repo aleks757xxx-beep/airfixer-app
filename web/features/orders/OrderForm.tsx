@@ -13,7 +13,7 @@ const DURATIONS: ReadonlyArray<{ label: string; value: number | null }> = [
 const STYLES = ["Заставка в стиле сайта", "Осенний фон", "Озвучка", "Отзывы и Telegram в конце", "Без музыки"] as const;
 
 const input =
-  "w-full rounded-lg border border-white/15 bg-ink-deep p-2.5 text-sm text-white placeholder:text-white/35 focus:border-brand focus:outline-none";
+  "w-full rounded-lg border border-outline-variant bg-surface-container-lowest p-2.5 text-sm text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none";
 
 /** Форма «Заказать монтаж». */
 export function OrderForm({ onDone }: { onDone: () => void }) {
@@ -40,7 +40,7 @@ export function OrderForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form
-      className="mt-4 space-y-4 rounded-2xl border border-brand/40 bg-ink-deep/60 p-3"
+      className="mt-4 space-y-4 rounded-m3m border border-primary/40 bg-surface-container-lowest/60 p-3"
       onSubmit={(e) => {
         e.preventDefault();
         const style = [...styles, styleExtra.trim()].filter(Boolean).join(", ");
@@ -61,7 +61,7 @@ export function OrderForm({ onDone }: { onDone: () => void }) {
           <span className="font-semibold">Дата съёмки</span>
           <input type="date" value={shootDate} onChange={(e) => setShootDate(e.target.value)} className={input} />
           {shootDate && sources.data ? (
-            <span className={`block text-xs ${onDate.length ? "text-wa" : "text-white/50"}`}>
+            <span className={`block text-xs ${onDate.length ? "text-success" : "text-on-surface-variant"}`}>
               {onDate.length
                 ? `В этот день: ${onDate.map((d) => `${d.folder} (${d.count})`).join(", ")}`
                 : sources.data.updatedAt
@@ -81,7 +81,7 @@ export function OrderForm({ onDone }: { onDone: () => void }) {
             ))}
           </select>
           {sources.data?.updatedAt ? (
-            <span className="block text-xs text-white/40">Оглавление обновлено {formatDate(sources.data.updatedAt)}</span>
+            <span className="block text-xs text-on-surface-variant">Оглавление обновлено {formatDate(sources.data.updatedAt)}</span>
           ) : null}
         </label>
       </div>
@@ -108,7 +108,7 @@ export function OrderForm({ onDone }: { onDone: () => void }) {
               type="button"
               onClick={() => setDuration(d.value)}
               aria-pressed={duration === d.value}
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${duration === d.value ? "bg-brand text-white" : "bg-white/10 text-white/75"}`}
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${duration === d.value ? "bg-primary text-on-primary" : "bg-surface-container-highest text-on-surface-variant"}`}
             >
               {d.label}
             </button>
@@ -125,7 +125,7 @@ export function OrderForm({ onDone }: { onDone: () => void }) {
               type="button"
               onClick={() => toggleStyle(s)}
               aria-pressed={styles.includes(s)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${styles.includes(s) ? "bg-brand text-white" : "bg-white/10 text-white/75"}`}
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${styles.includes(s) ? "bg-primary text-on-primary" : "bg-surface-container-highest text-on-surface-variant"}`}
             >
               {s}
             </button>
@@ -134,12 +134,12 @@ export function OrderForm({ onDone }: { onDone: () => void }) {
         <input value={styleExtra} onChange={(e) => setStyleExtra(e.target.value)} maxLength={200} placeholder="Своё пожелание (необязательно)" className={input} />
       </div>
 
-      {create.isError ? <p className="text-sm text-red-400">{create.error.message}</p> : null}
+      {create.isError ? <p className="text-sm text-error">{create.error.message}</p> : null}
       <div className="flex gap-3">
-        <button type="submit" disabled={create.isPending || !brief.trim()} className="rounded-full bg-brand px-5 py-2 font-bold text-white disabled:opacity-40">
+        <button type="submit" disabled={create.isPending || !brief.trim()} className="rounded-full bg-primary px-5 py-2 font-bold text-on-primary disabled:opacity-40">
           {create.isPending ? "Отправляю…" : "Заказать"}
         </button>
-        <button type="button" onClick={onDone} className="text-sm text-white/55">
+        <button type="button" onClick={onDone} className="text-sm text-on-surface-variant">
           Отмена
         </button>
       </div>

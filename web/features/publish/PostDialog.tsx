@@ -37,35 +37,35 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 md:items-center" role="dialog" aria-modal="true" aria-label="Пост">
-      <div className="max-h-[100dvh] w-full max-w-lg space-y-4 overflow-y-auto rounded-t-3xl bg-ink-card p-4 md:max-h-[92vh] md:rounded-3xl">
+      <div className="max-h-[100dvh] w-full max-w-lg space-y-4 overflow-y-auto rounded-t-3xl bg-surface-container p-4 md:max-h-[92vh] md:rounded-m3xl">
         <header className="flex items-center gap-2">
           <ServiceBadge service={post.service} size="md" />
           <div className="min-w-0">
             <p className="font-bold">{channel ? channelLabel(channel) : post.service}</p>
-            <p className="text-xs text-white/55">
+            <p className="text-xs text-on-surface-variant">
               {STATUS_LABEL[post.status]}
               {post.status === "sent" && post.sentAt ? ` · ${formatWhen(post.sentAt)}` : post.dueAt ? ` · ${formatWhen(post.dueAt)}` : ""}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="ml-auto rounded-full px-3 py-1 text-white/60 hover:bg-white/10" aria-label="Закрыть">
+          <button type="button" onClick={onClose} className="ml-auto rounded-full px-3 py-1 text-on-surface-variant hover:bg-surface-container-highest" aria-label="Закрыть">
             ✕
           </button>
         </header>
 
-        {post.error ? <p className="rounded-lg bg-red-500/15 p-2 text-sm text-red-300">⚠️ {post.error}</p> : null}
+        {post.error ? <p className="rounded-lg bg-error-container p-2 text-sm text-error">⚠️ {post.error}</p> : null}
         <div className="flex flex-wrap gap-2">
           {post.status === "error" ? (
             <button
               type="button"
               disabled={busy}
               onClick={() => retry.mutate(post.id, { onSuccess: onClose })}
-              className="rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40"
+              className="rounded-full bg-primary px-4 py-1.5 text-sm font-bold text-on-primary disabled:opacity-40"
             >
               {retry.isPending ? "Ставлю…" : "↻ Повторить (в очередь)"}
             </button>
           ) : null}
           {media ? (
-            <button type="button" onClick={() => setDup(true)} className="rounded-full bg-white/10 px-4 py-1.5 text-sm font-bold">
+            <button type="button" onClick={() => setDup(true)} className="rounded-full bg-surface-container-highest px-4 py-1.5 text-sm font-bold">
               ⧉ Дублировать
             </button>
           ) : null}
@@ -78,56 +78,56 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
               rows={7}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              className="w-full rounded-lg border border-white/15 bg-ink-deep p-2.5 text-sm text-white focus:border-brand focus:outline-none"
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest p-2.5 text-sm text-on-surface focus:border-primary focus:outline-none"
             />
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 disabled={busy || text.length > (TEXT_LIMITS[post.service] ?? 5000)}
                 onClick={() => editText.mutate({ id: post.id, text }, { onSuccess: () => setEditingText(false) })}
-                className="rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40"
+                className="rounded-full bg-primary px-4 py-1.5 text-sm font-bold text-on-primary disabled:opacity-40"
               >
                 {editText.isPending ? "Сохраняю…" : "Сохранить подпись"}
               </button>
-              <button type="button" onClick={() => setEditingText(false)} className="text-sm text-white/55">
+              <button type="button" onClick={() => setEditingText(false)} className="text-sm text-on-surface-variant">
                 Отмена
               </button>
-              <span className="ml-auto text-xs text-white/45">
+              <span className="ml-auto text-xs text-on-surface-variant">
                 {text.length} / {TEXT_LIMITS[post.service] ?? 5000}
               </span>
             </div>
           </div>
         ) : (
           <div className="space-y-1">
-            <p className="whitespace-pre-wrap text-sm">{(editText.data?.post.text ?? post.text) || <span className="text-amber-300">Без подписи</span>}</p>
+            <p className="whitespace-pre-wrap text-sm">{(editText.data?.post.text ?? post.text) || <span className="text-warning">Без подписи</span>}</p>
             {editable ? (
-              <button type="button" onClick={() => setEditingText(true)} className="text-sm font-semibold text-brand-light">
+              <button type="button" onClick={() => setEditingText(true)} className="text-sm font-semibold text-primary">
                 ✎ {post.text ? "Изменить подпись" : "Добавить подпись"}
               </button>
             ) : null}
           </div>
         )}
         {post.externalLink ? (
-          <a href={post.externalLink} target="_blank" rel="noreferrer" className="inline-block text-sm font-semibold text-brand-light">
+          <a href={post.externalLink} target="_blank" rel="noreferrer" className="inline-block text-sm font-semibold text-primary">
             Открыть в соцсети ↗
           </a>
         ) : null}
 
         {editable ? (
-          <div className="space-y-2 border-t border-white/10 pt-3">
+          <div className="space-y-2 border-t border-outline-variant pt-3">
             <p className="text-sm font-semibold">Перенести</p>
             <div className="flex gap-2">
               <input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-lg border border-white/15 bg-ink-deep p-2 text-sm text-white"
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest p-2 text-sm text-on-surface"
               />
               <input
                 type="time"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
-                className="w-32 rounded-lg border border-white/15 bg-ink-deep p-2 text-sm text-white"
+                className="w-32 rounded-lg border border-outline-variant bg-surface-container-lowest p-2 text-sm text-on-surface"
               />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -135,7 +135,7 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
                 type="button"
                 disabled={busy || target === null || target <= Date.now()}
                 onClick={() => target && move.mutate({ id: post.id, dueAt: target }, { onSuccess: onClose })}
-                className="rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40"
+                className="rounded-full bg-primary px-4 py-1.5 text-sm font-bold text-on-primary disabled:opacity-40"
               >
                 Перенести
               </button>
@@ -143,7 +143,7 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
                 type="button"
                 disabled={busy}
                 onClick={() => window.confirm("Опубликовать этот пост прямо сейчас?") && now.mutate(post.id, { onSuccess: onClose })}
-                className="rounded-full bg-white/10 px-4 py-1.5 text-sm font-bold"
+                className="rounded-full bg-surface-container-highest px-4 py-1.5 text-sm font-bold"
               >
                 Опубликовать сейчас
               </button>
@@ -151,14 +151,14 @@ export function PostDialog({ post, channel, onClose }: { post: BufferPost; chann
                 type="button"
                 disabled={busy}
                 onClick={() => window.confirm("Удалить пост из Buffer? Ролик в библиотеке останется.") && del.mutate(post.id, { onSuccess: onClose })}
-                className="ml-auto text-sm font-semibold text-red-400"
+                className="ml-auto text-sm font-semibold text-error"
               >
                 Удалить
               </button>
             </div>
           </div>
         ) : null}
-        {err ? <p className="text-sm text-red-400">{err.message}</p> : null}
+        {err ? <p className="text-sm text-error">{err.message}</p> : null}
       </div>
       {dup && media ? (
         <ComposeDialog

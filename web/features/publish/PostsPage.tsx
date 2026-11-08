@@ -43,13 +43,13 @@ export function PostsPage() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 text-xl" aria-hidden>
+        <span className="flex h-11 w-11 items-center justify-center rounded-m3m border border-outline-variant text-xl" aria-hidden>
           📅
         </span>
         <h1 className="text-2xl font-bold">Публикации</h1>
-        <div className="ml-auto flex rounded-xl border border-white/10 p-1">
-          <span className="rounded-lg bg-wa/20 px-3 py-1.5 text-sm font-semibold text-wa">☰ Список</span>
-          <a href="#/calendar" className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white/70 hover:bg-white/5">
+        <div className="ml-auto flex rounded-xl border border-outline-variant p-1">
+          <span className="rounded-lg bg-success-container px-3 py-1.5 text-sm font-semibold text-success">☰ Список</span>
+          <a href="#/calendar" className="rounded-lg px-3 py-1.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high">
             📅 Календарь
           </a>
         </div>
@@ -62,24 +62,24 @@ export function PostsPage() {
               type="button"
               aria-pressed={tab === t.tab}
               onClick={() => setTab(t.tab)}
-              className={`rounded-full px-3 py-1.5 text-sm font-semibold ${tab === t.tab ? "bg-brand text-white" : "bg-white/10 text-white/70"}`}
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold ${tab === t.tab ? "bg-primary text-on-primary" : "bg-surface-container-highest text-on-surface-variant"}`}
             >
               {t.label} {posts.data ? `(${lists[t.tab].length})` : ""}
             </button>
           ))}
         </div>
-        {posts.isError ? <p className="mt-2 text-sm text-red-400">{posts.error.message}</p> : null}
+        {posts.isError ? <p className="mt-2 text-sm text-error">{posts.error.message}</p> : null}
       </Card>
       {posts.isPending ? (
         <Skeleton className="h-40" />
       ) : list.length === 0 ? (
         <Card>
-          <p className="text-white/55">Пусто. Новый пост — кнопка «📅 Запланировать» у ролика в «Библиотеке» или «+ Пост» в «Календаре».</p>
+          <p className="text-on-surface-variant">Пусто. Новый пост — кнопка «📅 Запланировать» у ролика в «Библиотеке» или «+ Пост» в «Календаре».</p>
         </Card>
       ) : (
         [...groups.entries()].map(([k, ps]) => (
           <section key={k} className="space-y-2">
-            <h3 className="px-1 text-sm font-bold text-white/60">{k === "—" ? "Без даты" : formatDay(ps[0]?.dueAt ?? 0)}</h3>
+            <h3 className="px-1 text-sm font-bold text-on-surface-variant">{k === "—" ? "Без даты" : formatDay(ps[0]?.dueAt ?? 0)}</h3>
             {ps.map((p) => {
               const c = chanById.get(p.channelId);
               return (
@@ -87,21 +87,21 @@ export function PostsPage() {
                   key={p.id}
                   type="button"
                   onClick={() => setOpen(p)}
-                  className={`flex w-full items-start gap-3 rounded-2xl border p-3 text-left ${p.status === "error" ? "border-red-500/50 bg-red-500/10" : "border-white/10 bg-ink-card"}`}
+                  className={`flex w-full items-start gap-3 rounded-m3m border p-3 text-left ${p.status === "error" ? "border-error bg-red-500/10" : "border-outline-variant bg-surface-container"}`}
                 >
                   {p.mediaUrl ? (
                     <video src={`${p.mediaUrl}#t=1`} muted preload="metadata" className="h-16 w-10 shrink-0 rounded-lg bg-black object-cover" />
                   ) : (
-                    <span className="flex h-16 w-10 shrink-0 items-center justify-center rounded-lg bg-white/5">🎬</span>
+                    <span className="flex h-16 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-container-high">🎬</span>
                   )}
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5 text-sm font-semibold">
                       <ServiceBadge service={p.service} />
                       {c ? channelLabel(c) : p.service}
-                      <span className="ml-auto text-xs font-normal text-white/50">{p.dueAt ? timeKey(p.dueAt) : ""}</span>
+                      <span className="ml-auto text-xs font-normal text-on-surface-variant">{p.dueAt ? timeKey(p.dueAt) : ""}</span>
                     </span>
-                    <span className="mt-1 line-clamp-2 block text-sm text-white/75">{p.text || "без подписи"}</span>
-                    {p.error ? <span className="mt-1 block text-xs text-red-300">⚠️ {p.error}</span> : null}
+                    <span className="mt-1 line-clamp-2 block text-sm text-on-surface-variant">{p.text || "без подписи"}</span>
+                    {p.error ? <span className="mt-1 block text-xs text-error">⚠️ {p.error}</span> : null}
                   </span>
                 </button>
               );

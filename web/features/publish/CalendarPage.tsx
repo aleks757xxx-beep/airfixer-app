@@ -54,7 +54,7 @@ function useOutside(onOut: () => void) {
   return ref;
 }
 
-const pill = "flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/5";
+const pill = "flex items-center gap-1.5 rounded-xl border border-outline-variant px-3 py-2 text-sm font-semibold hover:bg-surface-container-high";
 
 /** Календарь публикаций в стиле Buffer: месяц/неделя, фильтры, карточки с превью, перетаскивание. */
 export function CalendarPage() {
@@ -169,18 +169,18 @@ export function CalendarPage() {
     <div className="space-y-4">
       {/* Заголовок как в Buffer */}
       <div className="flex flex-wrap items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 text-xl" aria-hidden>
+        <span className="flex h-11 w-11 items-center justify-center rounded-m3m border border-outline-variant text-xl" aria-hidden>
           📅
         </span>
         <h1 className="text-2xl font-bold">Публикации</h1>
         <div className="ml-auto flex items-center gap-2">
-          <div className="flex rounded-xl border border-white/10 p-1">
-            <a href="#/posts" className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white/70 hover:bg-white/5">
+          <div className="flex rounded-xl border border-outline-variant p-1">
+            <a href="#/posts" className="rounded-lg px-3 py-1.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high">
               ☰ Список
             </a>
-            <span className="rounded-lg bg-wa/20 px-3 py-1.5 text-sm font-semibold text-wa">📅 Календарь</span>
+            <span className="rounded-lg bg-success-container px-3 py-1.5 text-sm font-semibold text-success">📅 Календарь</span>
           </div>
-          <button type="button" onClick={() => setCompose({})} className={`${pill} bg-white/5`}>
+          <button type="button" onClick={() => setCompose({})} className={`${pill} bg-surface-container-high`}>
             + Новый пост
           </button>
         </div>
@@ -188,10 +188,10 @@ export function CalendarPage() {
 
       {/* Навигация */}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => shift(-1)} className="rounded-lg px-2 py-1 text-xl text-white/70 hover:bg-white/5" aria-label="Назад">
+        <button type="button" onClick={() => shift(-1)} className="rounded-lg px-2 py-1 text-xl text-on-surface-variant hover:bg-surface-container-high" aria-label="Назад">
           ‹
         </button>
-        <button type="button" onClick={() => shift(1)} className="rounded-lg px-2 py-1 text-xl text-white/70 hover:bg-white/5" aria-label="Вперёд">
+        <button type="button" onClick={() => shift(1)} className="rounded-lg px-2 py-1 text-xl text-on-surface-variant hover:bg-surface-container-high" aria-label="Вперёд">
           ›
         </button>
         <h2 className="min-w-40 text-xl font-bold">{title}</h2>
@@ -205,13 +205,13 @@ export function CalendarPage() {
             setView(v);
             if (v === "week") setWStart(weekStart(fromTb(selectedDay, "12:00") ?? Date.now()));
           }}
-          className="hidden rounded-xl border border-white/10 bg-transparent px-3 py-2 text-sm font-semibold md:block"
+          className="hidden rounded-xl border border-outline-variant bg-transparent px-3 py-2 text-sm font-semibold md:block"
           aria-label="Вид"
         >
-          <option value="month" className="bg-ink">
+          <option value="month" className="bg-surface">
             Месяц
           </option>
-          <option value="week" className="bg-ink">
+          <option value="week" className="bg-surface">
             Неделя
           </option>
         </select>
@@ -224,14 +224,14 @@ export function CalendarPage() {
             ⚏ Каналы {hidden.length ? `(${chans.length - hidden.length}/${chans.length})` : ""} ▾
           </button>
           {chanMenu ? (
-            <div className="absolute left-0 top-full z-20 mt-1 w-64 space-y-1 rounded-xl border border-white/10 bg-ink-card p-2 shadow-xl">
-              <button type="button" onClick={() => setHidden([])} className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-brand-light hover:bg-white/5">
+            <div className="absolute left-0 top-full z-20 mt-1 w-64 space-y-1 rounded-xl border border-outline-variant bg-surface-container p-2 shadow-xl">
+              <button type="button" onClick={() => setHidden([])} className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-primary hover:bg-surface-container-high">
                 Показать все
               </button>
               {chans.map((c) => {
                 const on = !hidden.includes(c.id);
                 return (
-                  <label key={c.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/5">
+                  <label key={c.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-surface-container-high">
                     <input type="checkbox" checked={on} onChange={() => setHidden(on ? [...hidden, c.id] : hidden.filter((x) => x !== c.id))} />
                     <ServiceSquare service={c.service} />
                     <span className="text-sm">
@@ -246,46 +246,46 @@ export function CalendarPage() {
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className={`${pill} bg-transparent`} aria-label="Какие посты">
           {STATUS_FILTERS.map((s) => (
-            <option key={s.v} value={s.v} className="bg-ink">
+            <option key={s.v} value={s.v} className="bg-surface">
               {s.label}
             </option>
           ))}
         </select>
-        <button type="button" aria-pressed={showNoDate} onClick={() => setShowNoDate((v) => !v)} className={`${pill} ${showNoDate ? "bg-white/10" : ""}`}>
+        <button type="button" aria-pressed={showNoDate} onClick={() => setShowNoDate((v) => !v)} className={`${pill} ${showNoDate ? "bg-surface-container-highest" : ""}`}>
           ▤ Без даты {drafts.length ? `(${drafts.length})` : ""}
         </button>
-        <button type="button" aria-pressed={showLib} onClick={() => setShowLib((v) => !v)} className={`${pill} hidden md:flex ${showLib ? "bg-white/10" : ""}`}>
+        <button type="button" aria-pressed={showLib} onClick={() => setShowLib((v) => !v)} className={`${pill} hidden md:flex ${showLib ? "bg-surface-container-highest" : ""}`}>
           🎬 Ролики
         </button>
-        <span className="ml-auto flex items-center gap-1 text-sm text-white/55">🌐 Тбилиси</span>
+        <span className="ml-auto flex items-center gap-1 text-sm text-on-surface-variant">🌐 Тбилиси</span>
       </div>
 
       {noTextSoon.length > 0 ? (
-        <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
+        <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-warning">
           ✎ {noTextSoon.length} {plural(noTextSoon.length, "запланированный пост", "запланированных поста", "запланированных постов")} без подписи — откройте пост и
           добавьте текст, или попросите Claude.
         </p>
       ) : null}
-      {posts.isError ? <p className="text-sm text-red-400">{posts.error.message}</p> : null}
-      {move.isError ? <p className="text-sm text-red-400">Перенос: {move.error.message}</p> : null}
+      {posts.isError ? <p className="text-sm text-error">{posts.error.message}</p> : null}
+      {move.isError ? <p className="text-sm text-error">Перенос: {move.error.message}</p> : null}
 
       {showLib ? (
-        <div className="flex gap-2 overflow-x-auto rounded-2xl border border-white/10 p-2">
+        <div className="flex gap-2 overflow-x-auto rounded-m3m border border-outline-variant p-2">
           {(library.data?.items ?? []).map((m) => (
             <div key={m.id} draggable onDragStart={(e) => e.dataTransfer.setData(DRAG_MEDIA, m.id)} title={`${m.name} — перетащите на день`} className="w-20 shrink-0 cursor-grab">
               <video src={`${m.url}#t=1`} muted preload="metadata" className="pointer-events-none aspect-[9/16] w-full rounded-lg bg-black object-cover" />
-              <p className="mt-1 line-clamp-2 text-[10px] text-white/60">{m.name}</p>
+              <p className="mt-1 line-clamp-2 text-[10px] text-on-surface-variant">{m.name}</p>
             </div>
           ))}
-          <p className="self-center px-2 text-xs text-white/40">Перетащите ролик на день →</p>
+          <p className="self-center px-2 text-xs text-on-surface-variant">Перетащите ролик на день →</p>
         </div>
       ) : null}
 
       {showNoDate ? (
-        <div className="rounded-2xl border border-white/10 p-3">
+        <div className="rounded-m3m border border-outline-variant p-3">
           <p className="mb-2 text-sm font-semibold">Черновики без даты</p>
           {drafts.length === 0 ? (
-            <p className="text-sm text-white/45">Нет</p>
+            <p className="text-sm text-on-surface-variant">Нет</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
               {drafts.map((p) => (
@@ -301,10 +301,10 @@ export function CalendarPage() {
       ) : (
         <>
           {/* Компьютер: сетка как в Buffer */}
-          <div className="hidden overflow-hidden rounded-2xl border border-white/10 md:block">
-            <div className="grid grid-cols-7 border-b border-white/10">
+          <div className="hidden overflow-hidden rounded-m3m border border-outline-variant md:block">
+            <div className="grid grid-cols-7 border-b border-outline-variant">
               {WEEKDAYS.map((w) => (
-                <div key={w} className="border-r border-white/10 py-3 text-center text-sm text-white/60 last:border-r-0">
+                <div key={w} className="border-r border-outline-variant py-3 text-center text-sm text-on-surface-variant last:border-r-0">
                   {w}
                 </div>
               ))}
@@ -323,11 +323,11 @@ export function CalendarPage() {
                     key={d}
                     onDragOver={(e) => !past && e.preventDefault()}
                     onDrop={(e) => onDrop(e, d)}
-                    className={`group space-y-1.5 border-b border-r border-white/10 p-2 [&:nth-child(7n)]:border-r-0 ${view === "month" ? "min-h-36" : "min-h-[60vh]"} ${key === today ? "bg-brand/5" : ""}`}
+                    className={`group space-y-1.5 border-b border-r border-outline-variant p-2 [&:nth-child(7n)]:border-r-0 ${view === "month" ? "min-h-36" : "min-h-[60vh]"} ${key === today ? "bg-primary/5" : ""}`}
                   >
                     <header className="flex items-center">
                       <span
-                        className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-sm ${key === today ? "bg-brand font-bold text-white" : other ? "text-white/25" : past ? "text-white/40" : "text-white/80"}`}
+                        className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-sm ${key === today ? "bg-primary font-bold text-on-primary" : other ? "text-on-surface-variant/60" : past ? "text-on-surface-variant" : "text-on-surface"}`}
                       >
                         {tbParts(d).d}
                       </span>
@@ -335,7 +335,7 @@ export function CalendarPage() {
                         <button
                           type="button"
                           onClick={() => setCompose({ date: key })}
-                          className="ml-auto rounded-lg px-2 text-lg leading-none text-white/0 hover:bg-white/10 group-hover:text-white/60"
+                          className="ml-auto rounded-lg px-2 text-lg leading-none text-white/0 hover:bg-surface-container-highest group-hover:text-on-surface-variant"
                           aria-label="Новый пост на этот день"
                         >
                           +
@@ -349,12 +349,12 @@ export function CalendarPage() {
                       <button
                         type="button"
                         onClick={() => setExpanded(isOpen ? expanded.filter((x) => x !== key) : [...expanded, key])}
-                        className="w-full py-1 text-center text-sm font-semibold text-white/70 hover:text-white"
+                        className="w-full py-1 text-center text-sm font-semibold text-on-surface-variant hover:text-white"
                       >
                         {isOpen ? "⌃ Свернуть" : `⌄ Ещё ${list.length - MONTH_LIMIT}`}
                       </button>
                     ) : null}
-                    {slots.length > 0 ? <p className="text-[11px] leading-snug text-white/30">свободно: {slots.join(", ")}</p> : null}
+                    {slots.length > 0 ? <p className="text-[11px] leading-snug text-on-surface-variant/60">свободно: {slots.join(", ")}</p> : null}
                   </section>
                 );
               })}
@@ -363,8 +363,8 @@ export function CalendarPage() {
 
           {/* Телефон: месяц с точками + посты выбранного дня */}
           <div className="space-y-3 md:hidden">
-            <div className="rounded-2xl border border-white/10 p-2">
-              <div className="grid grid-cols-7 pb-1 text-center text-xs text-white/45">
+            <div className="rounded-m3m border border-outline-variant p-2">
+              <div className="grid grid-cols-7 pb-1 text-center text-xs text-on-surface-variant">
                 {WD_SHORT.map((w) => (
                   <span key={w}>{w}</span>
                 ))}
@@ -380,17 +380,17 @@ export function CalendarPage() {
                       key={d}
                       type="button"
                       onClick={() => setSelectedDay(key)}
-                      className={`flex h-12 flex-col items-center justify-start rounded-xl pt-1 ${sel ? "bg-white/10" : ""}`}
+                      className={`flex h-12 flex-col items-center justify-start rounded-xl pt-1 ${sel ? "bg-surface-container-highest" : ""}`}
                       aria-pressed={sel}
                     >
                       <span
-                        className={`flex h-6 w-6 items-center justify-center rounded-full text-sm ${key === today ? "bg-brand font-bold text-white" : other ? "text-white/25" : "text-white/85"}`}
+                        className={`flex h-6 w-6 items-center justify-center rounded-full text-sm ${key === today ? "bg-primary font-bold text-on-primary" : other ? "text-on-surface-variant/60" : "text-on-surface"}`}
                       >
                         {tbParts(d).d}
                       </span>
                       <span className="mt-0.5 flex gap-0.5">
                         {list.slice(0, 4).map((p) => (
-                          <span key={p.id} className={`h-1.5 w-1.5 rounded-full ${p.status === "error" ? "bg-amber-400 ring-1 ring-red-500" : serviceInfo(p.service).cls}`} />
+                          <span key={p.id} className={`h-1.5 w-1.5 rounded-full ${p.status === "error" ? "bg-amber-400 ring-1 ring-error" : serviceInfo(p.service).cls}`} />
                         ))}
                       </span>
                     </button>
@@ -407,13 +407,13 @@ export function CalendarPage() {
                 })()}
               </h3>
               {selectedDay >= today ? (
-                <button type="button" onClick={() => setCompose({ date: selectedDay })} className="ml-auto rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white">
+                <button type="button" onClick={() => setCompose({ date: selectedDay })} className="ml-auto rounded-full bg-primary px-4 py-1.5 text-sm font-bold text-on-primary">
                   + Пост
                 </button>
               ) : null}
             </div>
             {selPosts.length === 0 ? (
-              <p className="text-sm text-white/45">Постов нет</p>
+              <p className="text-sm text-on-surface-variant">Постов нет</p>
             ) : (
               <div className="space-y-2">
                 {selPosts.map((p) => (

@@ -10,7 +10,7 @@ export const DRAG_MEDIA = "application/x-postfixer-media";
 export function ServiceSquare({ service }: { service: string }) {
   const i = serviceInfo(service);
   return (
-    <span aria-label={i.label} className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-black text-white ${i.cls}`}>
+    <span aria-label={i.label} className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-black text-on-surface ${i.cls}`}>
       {i.short}
     </span>
   );
@@ -20,14 +20,14 @@ export function ServiceSquare({ service }: { service: string }) {
 function TypeIcon({ service }: { service: string }) {
   if (service === "youtube") {
     return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4 text-white/70" aria-label="Shorts" fill="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 text-on-surface-variant" aria-label="Shorts" fill="currentColor">
         <path d="M14.5 2.6a4 4 0 0 1 3.9 6.9l-1.3.8a4 4 0 0 1 .6 7.3l-6.2 3.6a4 4 0 0 1-3.9-6.9l1.3-.8a4 4 0 0 1-.6-7.3zM10 9v6l5-3z" />
       </svg>
     );
   }
   if (service === "instagram" || service === "facebook" || service === "tiktok" || service === "telegram") {
     return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4 text-white/70" aria-label="Ролик" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 text-on-surface-variant" aria-label="Ролик" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="4" width="18" height="16" rx="3" />
         <path d="M3 9h18M8 4l3 5M14 4l3 5" />
         <path d="M10 12.5v4l3.5-2z" fill="currentColor" stroke="none" />
@@ -57,12 +57,12 @@ export function Thumb({ post, className = "h-10 w-10" }: { post: BufferPost; cla
 }
 
 const tone: Readonly<Record<BufferPost["status"], string>> = {
-  scheduled: "border-white/10 bg-[#24232e] hover:border-white/25",
-  sending: "border-brand/50 bg-[#24232e]",
-  sent: "border-white/5 bg-[#1d1c26] hover:border-white/20",
+  scheduled: "border-outline-variant bg-[#24232e] hover:border-outline",
+  sending: "border-primary/50 bg-[#24232e]",
+  sent: "border-outline-variant bg-[#1d1c26] hover:border-outline",
   error: "border-[#8a3b30] bg-[#5a2a24] hover:border-[#c2584a]",
-  draft: "border-dashed border-white/25 bg-transparent",
-  needs_approval: "border-amber-400/50 bg-[#24232e]",
+  draft: "border-dashed border-outline bg-transparent",
+  needs_approval: "border-warning bg-[#24232e]",
 };
 
 /** Карточка поста в календаре — значок сети, тип, время, превью. */
@@ -86,9 +86,9 @@ export function PostCard({ post, channel, onOpen }: { post: BufferPost; channel:
         <span className="mt-1 flex items-center gap-1 text-sm font-semibold tabular-nums">
           {post.dueAt ? timeKey(post.dueAt) : "—"}
           {post.status === "error" ? <span title={post.error ?? "Ошибка"}>⚠️</span> : null}
-          {post.status === "sent" ? <span className="text-xs text-wa">✓</span> : null}
+          {post.status === "sent" ? <span className="text-xs text-success">✓</span> : null}
           {noText ? (
-            <span className="text-xs text-amber-300" title="Без подписи">
+            <span className="text-xs text-warning" title="Без подписи">
               ✎
             </span>
           ) : null}

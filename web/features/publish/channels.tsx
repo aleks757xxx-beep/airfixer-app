@@ -16,7 +16,7 @@ export function ServiceBadge({ service, size = "sm" }: { service: string; size?:
   const i = serviceInfo(service);
   const dim = size === "md" ? "h-7 w-7 text-[11px]" : "h-5 w-5 text-[9px]";
   return (
-    <span aria-label={i.label} className={`inline-flex shrink-0 items-center justify-center rounded-full font-black text-white ${dim} ${i.cls}`}>
+    <span aria-label={i.label} className={`inline-flex shrink-0 items-center justify-center rounded-full font-black text-on-surface ${dim} ${i.cls}`}>
       {i.short}
     </span>
   );

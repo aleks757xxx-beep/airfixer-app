@@ -40,11 +40,11 @@ function NoteBlock({ item }: { item: MediaItem }) {
           rows={4}
           autoFocus
           placeholder="Например: подпись для Инсты и ТикТока, выложить в пятницу вечером"
-          className="w-full rounded-lg border border-white/15 bg-ink-deep p-2 text-sm text-white placeholder:text-white/35 focus:border-brand focus:outline-none"
+          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest p-2 text-sm text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
         />
-        {save.isError ? <p className="text-xs text-red-400">{save.error.message}</p> : null}
+        {save.isError ? <p className="text-xs text-error">{save.error.message}</p> : null}
         <div className="flex gap-2">
-          <button type="submit" disabled={save.isPending} className="rounded-full bg-brand px-3 py-1 text-xs font-bold text-white disabled:opacity-50">
+          <button type="submit" disabled={save.isPending} className="rounded-full bg-primary px-3 py-1 text-xs font-bold text-on-primary disabled:opacity-50">
             {save.isPending ? "Сохраняю…" : "Сохранить"}
           </button>
           <button
@@ -53,7 +53,7 @@ function NoteBlock({ item }: { item: MediaItem }) {
               setText(item.note ?? "");
               setEditing(false);
             }}
-            className="text-xs text-white/55"
+            className="text-xs text-on-surface-variant"
           >
             Отмена
           </button>
@@ -64,7 +64,7 @@ function NoteBlock({ item }: { item: MediaItem }) {
 
   if (!item.note) {
     return (
-      <button type="button" onClick={() => setEditing(true)} className="mt-2 text-xs font-semibold text-brand-light">
+      <button type="button" onClick={() => setEditing(true)} className="mt-2 text-xs font-semibold text-primary">
         ✎ Задание для Claude
       </button>
     );
@@ -72,19 +72,19 @@ function NoteBlock({ item }: { item: MediaItem }) {
 
   const done = item.noteStatus === "done";
   return (
-    <div className="mt-2 space-y-1.5 rounded-lg bg-white/5 p-2 text-xs">
-      <p className={done ? "font-semibold text-wa" : "font-semibold text-amber-300"}>
+    <div className="mt-2 space-y-1.5 rounded-lg bg-surface-container-high p-2 text-xs">
+      <p className={done ? "font-semibold text-success" : "font-semibold text-warning"}>
         {done ? "✓ Claude выполнил" : "⏳ Ждёт Claude"}
       </p>
-      <p className="whitespace-pre-wrap text-white/80">{item.note}</p>
-      {item.noteReply ? <p className="whitespace-pre-wrap border-t border-white/10 pt-1.5 text-white/65">Claude: {item.noteReply}</p> : null}
+      <p className="whitespace-pre-wrap text-on-surface">{item.note}</p>
+      {item.noteReply ? <p className="whitespace-pre-wrap border-t border-outline-variant pt-1.5 text-on-surface-variant">Claude: {item.noteReply}</p> : null}
       <button
         type="button"
         onClick={() => {
           setText(done ? "" : item.note ?? "");
           setEditing(true);
         }}
-        className="font-semibold text-brand-light"
+        className="font-semibold text-primary"
       >
         {done ? "✎ Новое задание" : "✎ Изменить"}
       </button>
@@ -95,7 +95,7 @@ function NoteBlock({ item }: { item: MediaItem }) {
 function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: () => void; deleting: boolean }) {
   const [composing, setComposing] = useState(false);
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-ink-card">
+    <div className="overflow-hidden rounded-m3m border border-outline-variant bg-surface-container">
       <a href={item.url} target="_blank" rel="noreferrer" className="block bg-black">
         <video src={`${item.url}#t=1`} preload="metadata" muted playsInline className="aspect-[9/16] w-full object-cover" />
       </a>
@@ -103,21 +103,21 @@ function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: ()
         <p className="line-clamp-2 text-sm font-semibold leading-snug" title={item.name}>
           {item.name}
         </p>
-        <p className="mt-1 text-xs text-white/55">
+        <p className="mt-1 text-xs text-on-surface-variant">
           {formatBytes(item.size)} · {formatDate(item.createdAt)} · {item.source === "gotovoe" ? "«Готовое»" : "загружено"}
           {item.tgSize ? ` · копия для Telegram ${formatBytes(item.tgSize)}` : ""}
         </p>
-        <button type="button" onClick={() => setComposing(true)} className="mt-2 w-full rounded-full bg-brand py-1.5 text-xs font-bold text-white">
+        <button type="button" onClick={() => setComposing(true)} className="mt-2 w-full rounded-full bg-primary py-1.5 text-xs font-bold text-on-primary">
           📅 Запланировать
         </button>
         {composing ? <ComposeDialog media={item} onClose={() => setComposing(false)} /> : null}
         <NoteBlock item={item} />
-        <AskClaudeButton item={item} className="mt-2 block text-xs font-semibold text-brand-light" />
+        <AskClaudeButton item={item} className="mt-2 block text-xs font-semibold text-primary" />
         <button
           type="button"
           disabled={deleting}
           onClick={onDelete}
-          className="mt-2 block text-xs font-semibold text-red-400 disabled:opacity-50"
+          className="mt-2 block text-xs font-semibold text-error disabled:opacity-50"
         >
           Удалить
         </button>
@@ -164,19 +164,19 @@ export function LibraryPage() {
         <div className="flex flex-wrap items-center gap-3">
           <div>
             <h2 className="text-lg font-bold">Библиотека</h2>
-            <p className="text-sm text-white/55">
+            <p className="text-sm text-on-surface-variant">
               {list.data
                 ? `${items.length} ${plural(items.length, "ролик", "ролика", "роликов")} · ${formatBytes(list.data.totalBytes)} из ${formatBytes(list.data.limitBytes)}`
                 : "Ролики из папки «Готовое» и загруженные вручную"}
             </p>
             {pending > 0 ? (
-              <p className="mt-1 text-sm font-semibold text-amber-300">
+              <p className="mt-1 text-sm font-semibold text-warning">
                 ⏳ {pending} {plural(pending, "задание ждёт", "задания ждут", "заданий ждут")} Claude — нажмите «💬 Claude» и напишите «посмотри задания»
               </p>
             ) : null}
           </div>
           <div className="ml-auto flex flex-wrap gap-2">
-            <button type="button" onClick={() => setOrdering(true)} className="rounded-full bg-brand px-4 py-2.5 font-bold text-white">
+            <button type="button" onClick={() => setOrdering(true)} className="rounded-full bg-primary px-4 py-2.5 font-bold text-on-primary">
               + Заказать монтаж
             </button>
             <button type="button" onClick={() => fileInput.current?.click()} className="rounded-full bg-tg px-4 py-2.5 font-bold text-white">
@@ -204,13 +204,13 @@ export function LibraryPage() {
               <li key={j.id} className="text-sm">
                 <div className="flex gap-2">
                   <span className="truncate">{j.name}</span>
-                  <span className={`ml-auto shrink-0 ${j.error ? "text-red-400" : j.done ? "text-wa" : "text-white/55"}`}>
+                  <span className={`ml-auto shrink-0 ${j.error ? "text-error" : j.done ? "text-success" : "text-on-surface-variant"}`}>
                     {j.error ?? (j.done ? (j.duplicate ? "уже в библиотеке" : "готово ✓") : `${Math.round(j.progress * 100)}%`)}
                   </span>
                 </div>
                 {!j.done && !j.error ? (
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full bg-brand transition-[width]" style={{ width: `${j.progress * 100}%` }} />
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-container-highest">
+                    <div className="h-full bg-primary transition-[width]" style={{ width: `${j.progress * 100}%` }} />
                   </div>
                 ) : null}
               </li>
@@ -221,7 +221,7 @@ export function LibraryPage() {
 
       <OrdersList />
 
-      {del.isError ? <p className="font-semibold text-red-400">{del.error.message}</p> : null}
+      {del.isError ? <p className="font-semibold text-error">{del.error.message}</p> : null}
 
       {list.isPending ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -231,14 +231,14 @@ export function LibraryPage() {
         </div>
       ) : list.isError ? (
         <Card>
-          <p className="text-red-400">{list.error.message}</p>
-          <button type="button" className="mt-2 text-sm text-brand-light underline" onClick={() => void list.refetch()}>
+          <p className="text-error">{list.error.message}</p>
+          <button type="button" className="mt-2 text-sm text-primary underline" onClick={() => void list.refetch()}>
             Повторить
           </button>
         </Card>
       ) : items.length === 0 ? (
         <Card>
-          <p className="text-white/60">
+          <p className="text-on-surface-variant">
             Пока пусто. Нажмите «+ Загрузить» и выберите ролик (на iPhone: «Файлы» → iCloud Drive → ALEXFIXER → Готовое), или
             включите автозагрузку с Mac.
           </p>

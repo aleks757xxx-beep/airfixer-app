@@ -35,7 +35,7 @@ export function ClaudeToast() {
   return (
     <div
       role="status"
-      className="fixed inset-x-4 bottom-24 z-30 mx-auto max-w-md rounded-2xl bg-white px-4 py-3 text-center text-sm font-semibold text-ink shadow-xl md:bottom-6"
+      className="fixed inset-x-4 bottom-24 z-30 mx-auto max-w-md rounded-m3m bg-white px-4 py-3 text-center text-sm font-semibold text-ink shadow-xl md:bottom-6"
     >
       {toast.text}
     </div>

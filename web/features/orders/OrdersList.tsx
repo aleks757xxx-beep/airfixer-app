@@ -5,12 +5,12 @@ import { formatDateTime, formatShootDate } from "../../lib/format";
 import { AskClaudeButton } from "../claude/askClaude";
 
 const STATUS: Record<OrderStatus, { label: string; cls: string }> = {
-  new: { label: "Новый — ждёт Claude", cls: "bg-amber-400/15 text-amber-300" },
-  in_work: { label: "Claude монтирует", cls: "bg-brand/20 text-brand-light" },
-  draft: { label: "Черновик готов — посмотрите", cls: "bg-wa/15 text-wa" },
-  revise: { label: "Правки — ждёт Claude", cls: "bg-amber-400/15 text-amber-300" },
-  accepted: { label: "Принят ✓", cls: "bg-white/10 text-white/60" },
-  cancelled: { label: "Отменён", cls: "bg-white/10 text-white/40" },
+  new: { label: "Новый — ждёт Claude", cls: "bg-warning-container text-warning" },
+  in_work: { label: "Claude монтирует", cls: "bg-primary/20 text-primary" },
+  draft: { label: "Черновик готов — посмотрите", cls: "bg-success-container text-success" },
+  revise: { label: "Правки — ждёт Claude", cls: "bg-warning-container text-warning" },
+  accepted: { label: "Принят ✓", cls: "bg-surface-container-highest text-on-surface-variant" },
+  cancelled: { label: "Отменён", cls: "bg-surface-container-highest text-on-surface-variant" },
 };
 
 export function orderBrief(o: Order): string {
@@ -39,21 +39,21 @@ function EventLine({ e, draftNo, latest }: { e: OrderEvent; draftNo: number; lat
   };
   return (
     <li className="space-y-1.5">
-      <p className="text-xs text-white/45">
-        <span className="font-semibold text-white/75">{head[e.kind]}</span> · {formatDateTime(e.createdAt)}
+      <p className="text-xs text-on-surface-variant">
+        <span className="font-semibold text-on-surface-variant">{head[e.kind]}</span> · {formatDateTime(e.createdAt)}
       </p>
-      {e.text ? <p className="whitespace-pre-wrap text-sm text-white/85">{e.text}</p> : null}
+      {e.text ? <p className="whitespace-pre-wrap text-sm text-on-surface">{e.text}</p> : null}
       {e.kind === "draft" ? (
         e.media ? (
           latest ? (
             <video src={e.media.url} controls playsInline preload="metadata" className="max-h-[60vh] w-full max-w-xs rounded-xl bg-black" />
           ) : (
-            <a href={e.media.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-brand-light">
+            <a href={e.media.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-primary">
               ▶ Смотреть v{draftNo}
             </a>
           )
         ) : (
-          <p className="text-xs text-white/40">Файл черновика удалён из библиотеки</p>
+          <p className="text-xs text-on-surface-variant">Файл черновика удалён из библиотеки</p>
         )
       ) : null}
     </li>
@@ -69,7 +69,7 @@ function OrderCard({ o }: { o: Order }) {
   const lastDraftId = [...o.events].reverse().find((e) => e.kind === "draft")?.id;
 
   return (
-    <article className="space-y-3 rounded-2xl border border-white/10 bg-ink-card p-3">
+    <article className="space-y-3 rounded-m3m border border-outline-variant bg-surface-container p-3">
       <header className="flex flex-wrap items-start gap-2">
         <div className="min-w-0">
           <h3 className="font-bold">
@@ -77,7 +77,7 @@ function OrderCard({ o }: { o: Order }) {
             {o.shootDate ? ` · ${formatShootDate(o.shootDate)}` : ""}
             {o.folder ? ` · ${o.folder}` : ""}
           </h3>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-on-surface-variant">
             {[o.durationSec ? `${o.durationSec} с` : null, o.style].filter(Boolean).join(" · ") || "длина и стиль — на усмотрение Claude"}
           </p>
         </div>
@@ -85,7 +85,7 @@ function OrderCard({ o }: { o: Order }) {
       </header>
       <p className="whitespace-pre-wrap text-sm">{o.brief}</p>
 
-      <ol className="space-y-3 border-l border-white/10 pl-3">
+      <ol className="space-y-3 border-l border-outline-variant pl-3">
         {o.events
           .filter((e) => e.kind !== "created")
           .map((e) => (
@@ -93,7 +93,7 @@ function OrderCard({ o }: { o: Order }) {
           ))}
       </ol>
 
-      {act.isError ? <p className="text-sm text-red-400">{act.error.message}</p> : null}
+      {act.isError ? <p className="text-sm text-error">{act.error.message}</p> : null}
 
       {mode ? (
         <form
@@ -119,13 +119,13 @@ function OrderCard({ o }: { o: Order }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={mode === "revise" ? "Что поправить: «на 6 секунде отзеркалить, финал короче»" : "Сообщение для Claude"}
-            className="w-full rounded-lg border border-white/15 bg-ink-deep p-2.5 text-sm text-white placeholder:text-white/35 focus:border-brand focus:outline-none"
+            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest p-2.5 text-sm text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
           />
           <div className="flex gap-3">
-            <button type="submit" disabled={act.isPending || !text.trim()} className="rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40">
+            <button type="submit" disabled={act.isPending || !text.trim()} className="rounded-full bg-primary px-4 py-1.5 text-sm font-bold text-on-primary disabled:opacity-40">
               {act.isPending ? "Отправляю…" : "Отправить"}
             </button>
-            <button type="button" onClick={() => setMode(null)} className="text-sm text-white/55">
+            <button type="button" onClick={() => setMode(null)} className="text-sm text-on-surface-variant">
               Отмена
             </button>
           </div>
@@ -142,23 +142,23 @@ function OrderCard({ o }: { o: Order }) {
               >
                 ✓ Принять
               </button>
-              <button type="button" onClick={() => setMode("revise")} className="rounded-full bg-white/10 px-4 py-1.5 text-sm font-bold">
+              <button type="button" onClick={() => setMode("revise")} className="rounded-full bg-surface-container-highest px-4 py-1.5 text-sm font-bold">
                 ✎ Правки
               </button>
             </>
           ) : (
-            <button type="button" onClick={() => setMode("comment")} className="rounded-full bg-white/10 px-4 py-1.5 text-sm font-semibold">
+            <button type="button" onClick={() => setMode("comment")} className="rounded-full bg-surface-container-highest px-4 py-1.5 text-sm font-semibold">
               ✎ Дописать
             </button>
           )}
-          <AskClaudeButton text={orderBrief(o)} className="rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white" />
+          <AskClaudeButton text={orderBrief(o)} className="rounded-full bg-primary px-4 py-1.5 text-sm font-bold text-on-primary" />
           <button
             type="button"
             disabled={act.isPending}
             onClick={() => {
               if (window.confirm(`Отменить заказ монтажа #${o.id}?`)) act.mutate({ id: o.id, action: "cancel" });
             }}
-            className="ml-auto text-xs text-red-400"
+            className="ml-auto text-xs text-error"
           >
             Отменить
           </button>
@@ -173,7 +173,7 @@ export function OrdersList() {
   const q = useOrders();
   const [showClosed, setShowClosed] = useState(false);
   if (q.isPending) return null;
-  if (q.isError) return <p className="text-sm text-red-400">Заказы: {q.error.message}</p>;
+  if (q.isError) return <p className="text-sm text-error">Заказы: {q.error.message}</p>;
   const open = q.data.items.filter((o) => o.status !== "accepted" && o.status !== "cancelled");
   const closed = q.data.items.filter((o) => o.status === "accepted" || o.status === "cancelled");
   if (open.length === 0 && closed.length === 0) return null;
@@ -183,7 +183,7 @@ export function OrdersList() {
         <OrderCard key={o.id} o={o} />
       ))}
       {closed.length > 0 ? (
-        <button type="button" onClick={() => setShowClosed((v) => !v)} className="text-sm font-semibold text-white/55">
+        <button type="button" onClick={() => setShowClosed((v) => !v)} className="text-sm font-semibold text-on-surface-variant">
           {showClosed ? "▾" : "▸"} Завершённые заказы ({closed.length})
         </button>
       ) : null}
