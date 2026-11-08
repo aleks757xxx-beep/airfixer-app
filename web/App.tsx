@@ -45,7 +45,7 @@ function NavItem({ route, label, icon, active, rail }: { route: Route; label: st
       >
         <Icon name={navIcon(icon, active)} />
       </span>
-      <span className={`max-w-full truncate px-0.5 ${active ? "font-semibold" : ""}`}>{label}</span>
+      <span className="max-w-full truncate">{label}</span>
     </a>
   );
 }
@@ -55,7 +55,7 @@ export function App() {
   const ask = useAskClaude();
   const wide = route === "calendar";
   return (
-    <div className="min-h-dvh bg-surface pb-20 md:pb-0 md:pl-20">
+    <div className="min-h-dvh overflow-x-clip bg-surface pb-20 md:pb-0 md:pl-20">
       {/* Боковая панель (Navigation rail) — компьютер */}
       <nav aria-label="Разделы" className="fixed inset-y-0 left-0 z-20 hidden w-20 flex-col items-center gap-3 bg-surface pt-4 md:flex">
         <a href="#/calendar" aria-label="PostFixer" className="mb-4 flex size-14 items-center justify-center rounded-m3l bg-primary-container text-2xl">
