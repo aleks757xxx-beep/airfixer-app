@@ -1,4 +1,3 @@
-import { isAgentToken, wakeClaude } from "../services/routine";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import type { AppBindings } from "../env";
 import {
@@ -247,7 +246,6 @@ export const media = new Hono<AppBindings>()
       .run();
     if (!res.meta.changes) return c.json({ error: "Ролик не найден" }, 404);
     const row = await mediaById(c.env.DB, id);
-    if (note && row) await wakeClaude(c.env.DB, `задание у ролика «${row.name}»: ${note.slice(0, 150)}`);
     return row ? c.json({ item: toItem(row) }) : c.json({ error: "Ролик не найден" }, 404);
   })
   .delete("/:id", async (c) => {
@@ -271,7 +269,7 @@ export const media = new Hono<AppBindings>()
 export const uploadToken: MiddlewareHandler<AppBindings> = async (c, next) => {
   const token = (c.req.header("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   const expected = c.env.UPLOAD_TOKEN?.trim();
-  const ok = (!!expected && !!token && (await safeEqual(token, expected))) || (!!token && (await ensureMigrated(c.env.DB), await isAgentToken(c.env.DB, token)));
+  const ok = !!expected && !!token && (await safeEqual(token, expected));
   if (!ok) return c.json({ error: "bad token" }, 401);
   await next();
 };

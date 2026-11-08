@@ -16,7 +16,7 @@ async function cached<T>(db: D1Database, key: string, ttlMs: number, load: () =>
   return value;
 }
 /** После любого изменения постов — сбросить списки (каналы и вставки не трогаем). */
-export async function invalidatePosts(db: D1Database): Promise<void> {
+async function invalidatePosts(db: D1Database): Promise<void> {
   await db.prepare("DELETE FROM buffer_cache WHERE key LIKE 'posts:%' OR key LIKE 'stats:%'").run();
 }
 

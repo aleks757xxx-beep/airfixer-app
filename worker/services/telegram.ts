@@ -105,7 +105,7 @@ export async function recentChannels(token: string): Promise<TgChat[]> {
 }
 
 /** Ссылка на сообщение в канале. */
-export function messageLink(chat: { id: number; username?: string }, messageId: number): string {
+function messageLink(chat: { id: number; username?: string }, messageId: number): string {
   if (chat.username) return `https://t.me/${chat.username}/${messageId}`;
   return `https://t.me/c/${String(chat.id).replace(/^-100/, "")}/${messageId}`;
 }

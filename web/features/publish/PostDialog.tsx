@@ -7,7 +7,7 @@ import { TEXT_LIMITS } from "../../../shared/schemas";
 import { dayKey, formatWhen, fromTb, timeKey } from "../../lib/time";
 import { ServiceBadge, channelLabel } from "./channels";
 
-export const STATUS_LABEL: Readonly<Record<BufferPost["status"], string>> = {
+const STATUS_LABEL: Readonly<Record<BufferPost["status"], string>> = {
   scheduled: "Запланирован",
   sent: "Опубликован",
   error: "Ошибка",

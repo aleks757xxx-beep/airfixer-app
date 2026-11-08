@@ -48,7 +48,7 @@ const CapabilitiesSchema = z.object({
   __schema: z.object({ mutationType: z.object({ fields: z.array(z.object({ name: z.string() })) }).nullable() }),
 });
 
-export interface BufferCapabilities {
+interface BufferCapabilities {
   ok: boolean;
   organizations: number;
   mutations: string[];

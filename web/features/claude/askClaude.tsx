@@ -4,7 +4,7 @@ import { useSettings } from "../../api/settings";
 import { formatBytes, formatDate } from "../../lib/format";
 
 /** Текст о ролике, который вставляется в чат с Claude. */
-export function mediaBrief(item: MediaItem): string {
+function mediaBrief(item: MediaItem): string {
   const lines = [
     `PostFixer · ролик «${item.name}»`,
     `id: ${item.id} · ${formatBytes(item.size)} · ${item.source === "gotovoe" ? "из «Готового»" : "загружен вручную"} · ${formatDate(item.createdAt)}`,

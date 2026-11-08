@@ -6,9 +6,9 @@ import { useLogin, usePasskeyLogin, useTotpSetup, useTotpVerify } from "../../ap
 function Shell({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
-      <div className="w-full max-w-sm rounded-m3xl border border-slate-200 bg-white p-6 dark:border-outline-variant dark:bg-surface-container">
+      <div className="w-full max-w-sm rounded-m3xl border border-outline-variant bg-surface-container p-6">
         <h1 className="text-2xl font-extrabold">🍁 {title}</h1>
-        <p className="mb-5 mt-1 font-semibold text-primary dark:text-primary">{subtitle}</p>
+        <p className="mb-5 mt-1 font-semibold text-primary">{subtitle}</p>
         {children}
       </div>
     </div>
@@ -16,7 +16,7 @@ function Shell({ title, subtitle, children }: { title: string; subtitle: string;
 }
 
 const inputCls =
-  "w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base outline-none focus:border-primary dark:border-outline-variant dark:bg-surface-container-lowest";
+  "w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-base outline-none focus:border-primary";
 const btnCls = "mt-3 w-full rounded-full bg-tg px-4 py-3.5 font-bold text-white disabled:opacity-60";
 
 function ErrorText({ text }: { text: string | null }) {
@@ -44,7 +44,7 @@ export function LoginPage() {
           <button type="button" className={`${btnCls} mt-0 bg-primary`} disabled={passkey.isPending} onClick={() => passkey.mutate()}>
             {passkey.isPending ? "Жду Face ID…" : "Войти по Face ID / Touch ID"}
           </button>
-          <p className="my-4 text-center text-sm text-slate-500 dark:text-on-surface-variant">или паролем</p>
+          <p className="my-4 text-center text-sm text-on-surface-variant">или паролем</p>
         </>
       ) : null}
       <form onSubmit={submit}>
@@ -131,7 +131,7 @@ export function TotpSetupPage() {
 
   return (
     <Shell title="Защита входа" subtitle="Подключите код проверки в «Паролях» Apple">
-      {setup.isPending ? <div className="mx-auto size-60 animate-pulse rounded-xl bg-slate-200 dark:bg-surface-container-highest" /> : null}
+      {setup.isPending ? <div className="mx-auto size-60 animate-pulse rounded-xl bg-surface-container-highest" /> : null}
       <ErrorText text={setup.error?.message ?? null} />
       {setup.data ? (
         <>
@@ -148,7 +148,7 @@ export function TotpSetupPage() {
             Добавить код в «Пароли»
           </a>
           {qr ? <img src={qr} alt="QR-код для кода проверки" className="mx-auto mb-3 hidden size-60 rounded-xl bg-white p-2 md:block" /> : null}
-          <p className="mb-4 break-all text-center font-mono text-xs text-slate-500 dark:text-on-surface-variant">
+          <p className="mb-4 break-all text-center font-mono text-xs text-on-surface-variant">
             Ключ вручную: {setup.data.secret}
           </p>
           <CodeForm submitLabel="Подключить" />

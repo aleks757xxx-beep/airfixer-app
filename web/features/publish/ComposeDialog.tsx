@@ -20,7 +20,7 @@ const titleFrom = (name: string) => name.replace(/\.[a-z0-9]+$/i, "").replace(/^
 const needsTitle = (s: string) => s === "youtube";
 
 /** Начальные значения при «Дублировать». */
-export interface ComposePreset {
+interface ComposePreset {
   text?: string;
   channelIds?: ReadonlyArray<string>;
   title?: string;

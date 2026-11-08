@@ -3,8 +3,8 @@ import { OrderListSchema, OrderResultSchema, SourcesIndexSchema, type OrderInput
 import { apiGet, apiPost } from "./client";
 import { mediaKey } from "./media";
 
-export const ordersKey = ["orders"] as const;
-export const sourcesKey = ["sources"] as const;
+const ordersKey = ["orders"] as const;
+const sourcesKey = ["sources"] as const;
 
 export function useOrders() {
   return useQuery<OrderList>({ queryKey: ordersKey, queryFn: () => apiGet("/orders", OrderListSchema), staleTime: 15_000, refetchInterval: 60_000 });
@@ -22,7 +22,7 @@ export function useCreateOrder() {
   });
 }
 
-export type OrderAction = "revise" | "comment" | "accept" | "cancel";
+type OrderAction = "revise" | "comment" | "accept" | "cancel";
 export function useOrderAction() {
   const qc = useQueryClient();
   return useMutation({

@@ -13,7 +13,7 @@ export function setThreadsApiUrl(url: string | undefined): void {
 
 /** ID приложения Threads (сценарий «Доступ к Threads API» в приложении Meta «PostFixer»; не секрет). */
 export const THREADS_APP_ID_DEFAULT = "1659729995690076";
-export const THREADS_SCOPES = "threads_basic,threads_content_publish,threads_manage_insights";
+const THREADS_SCOPES = "threads_basic,threads_content_publish,threads_manage_insights";
 /** Долгий ключ живёт 60 дней; продлеваем, когда ему больше недели. */
 export const THREADS_TOKEN_TTL_MS = 60 * 86_400_000;
 

@@ -7,7 +7,7 @@ export function randomToken(bytes = 32): string {
   return toBase64Url(b);
 }
 
-export function toBase64Url(b: Uint8Array): string {
+function toBase64Url(b: Uint8Array): string {
   let s = "";
   for (const x of b) s += String.fromCharCode(x);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

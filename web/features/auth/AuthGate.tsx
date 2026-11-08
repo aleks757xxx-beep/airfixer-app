@@ -6,7 +6,7 @@ import { LoginPage, TotpSetupPage, TotpVerifyPage } from "./AuthScreens";
 export function AuthGate({ children }: { children: ReactNode }) {
   const me = useMe();
   if (me.isPending) {
-    return <div className="flex min-h-dvh items-center justify-center text-slate-500 dark:text-on-surface-variant">Загрузка…</div>;
+    return <div className="flex min-h-dvh items-center justify-center text-on-surface-variant">Загрузка…</div>;
   }
   if (me.isError) {
     return (

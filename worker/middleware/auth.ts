@@ -5,7 +5,7 @@ import type { AuthState } from "../../shared/schemas";
 import { randomToken, sha256Hex } from "../lib/crypto";
 import { ensureMigrated } from "../lib/migrate";
 
-export const SESSION_COOKIE = "pf_session";
+const SESSION_COOKIE = "pf_session";
 export const DEVICE_COOKIE = "pf_device";
 /**
  * Решение владельца 07.11.2026: вход без срока — до нажатия «Выйти» (или «Выйти на всех устройствах»).
@@ -14,7 +14,7 @@ export const DEVICE_COOKIE = "pf_device";
 const NO_EXPIRY_MS = 100 * 365 * 24 * 3600 * 1000;
 const COOKIE_MAX_AGE_SEC = 400 * 86400;
 
-export interface SessionRow {
+interface SessionRow {
   id: string;
   expires_at: number;
   mfa_ok: number;

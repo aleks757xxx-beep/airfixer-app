@@ -87,7 +87,7 @@ export function PostsPage() {
                   key={p.id}
                   type="button"
                   onClick={() => setOpen(p)}
-                  className={`flex w-full items-start gap-3 rounded-m3m border p-3 text-left ${p.status === "error" ? "border-error bg-red-500/10" : "border-outline-variant bg-surface-container"}`}
+                  className={`flex w-full items-start gap-3 rounded-m3m border p-3 text-left ${p.status === "error" ? "border-error bg-error-container/30" : "border-outline-variant bg-surface-container"}`}
                 >
                   {p.mediaUrl ? (
                     <video src={`${p.mediaUrl}#t=1`} muted preload="metadata" className="h-16 w-10 shrink-0 rounded-lg bg-black object-cover" />

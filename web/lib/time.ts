@@ -1,7 +1,7 @@
 import { TBILISI_OFFSET_MS } from "../../shared/schemas";
 
 /** Время по Тбилиси (UTC+4, без летнего времени). */
-export interface TbParts {
+interface TbParts {
   y: number;
   m: number; // 1–12
   d: number;

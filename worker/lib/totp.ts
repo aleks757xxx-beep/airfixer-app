@@ -3,7 +3,7 @@
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const STEP = 30;
 
-export function base32Encode(bytes: Uint8Array): string {
+function base32Encode(bytes: Uint8Array): string {
   let bits = 0;
   let value = 0;
   let out = "";
@@ -19,7 +19,7 @@ export function base32Encode(bytes: Uint8Array): string {
   return out;
 }
 
-export function base32Decode(s: string): Uint8Array {
+function base32Decode(s: string): Uint8Array {
   const clean = s.toUpperCase().replace(/[^A-Z2-7]/g, "");
   let bits = 0;
   let value = 0;
@@ -72,5 +72,3 @@ export function otpauthUri(secret: string, account: string, issuer: string): str
   return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=${STEP}`;
 }
 
-/** Для тестов. */
-export const __test = { codeAt };

@@ -20,7 +20,6 @@ import { connect, connectCallback } from "./routes/connect";
 import { collectDirectMetrics, processDirectQueue, refreshThreadsTokens } from "./services/direct";
 import { archiveBufferHistory } from "./services/history";
 import { seal } from "./lib/secretbox";
-import { fireRoutine } from "./services/routine";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -92,13 +91,17 @@ export default {
       if (n) console.log("direct queue: processed", n);
       const m = await collectDirectMetrics(env).catch((e: unknown) => (console.error("metrics", e), 0));
       if (m) console.log("metrics: updated", m);
-      if (await fireRoutine(env).catch((e: unknown) => (console.error("routine", e), false))) console.log("claude routine fired");
       return;
     }
     const removed = await cleanupOrphans(env.BUCKET, env.DB);
     console.log("cleanup: removed orphan files", removed);
     const stale = await cleanupStaleUploads(env.DB, env.BUCKET);
     console.log("cleanup: aborted stale uploads", stale);
+    // журнал — год, кэш Buffer — неделя
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM audit_log WHERE at < ?").bind(Date.now() - 365 * 86_400_000),
+      env.DB.prepare("DELETE FROM buffer_cache WHERE at < ?").bind(Date.now() - 7 * 86_400_000),
+    ]);
     // ключ кода проверки — только в зашифрованном виде
     const t = await env.DB.prepare("SELECT totp_secret_enc AS s FROM auth_settings WHERE id = 1").first<{ s: string | null }>();
     if (t?.s && !t.s.startsWith("v1.") && env.TOKEN_KEY) {

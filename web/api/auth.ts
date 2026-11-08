@@ -71,7 +71,7 @@ const StartSchema = z.object({ challengeId: z.string(), options: z.record(z.stri
 const PasskeyListSchema = z.object({
   items: z.array(z.object({ id: z.string(), device: z.string(), createdAt: z.number(), lastUsedAt: z.number().nullable() })),
 });
-export const passkeysKey = ["passkeys"] as const;
+const passkeysKey = ["passkeys"] as const;
 
 /** Отмена системного окна Face ID — не ошибка. */
 function friendly(e: unknown): Error {

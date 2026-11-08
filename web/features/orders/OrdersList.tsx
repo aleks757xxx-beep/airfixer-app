@@ -13,7 +13,7 @@ const STATUS: Record<OrderStatus, { label: string; cls: string }> = {
   cancelled: { label: "Отменён", cls: "bg-surface-container-highest text-on-surface-variant" },
 };
 
-export function orderBrief(o: Order): string {
+function orderBrief(o: Order): string {
   const lines = [`PostFixer · заказ монтажа #${o.id} (${STATUS[o.status].label})`];
   if (o.shootDate) lines.push(`Дата съёмки: ${formatShootDate(o.shootDate)}`);
   if (o.folder) lines.push(`Папка: ${o.folder}`);

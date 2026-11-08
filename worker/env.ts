@@ -17,9 +17,6 @@ export interface Env {
   META_GRAPH_URL?: string;
   /** ID конфигурации «единого входа» Instagram (не секрет; по умолчанию — из кода) */
   META_IG_CONFIG_ID?: string;
-  /** Запуск задачи Claude по сигналу (claude.ai/code/routines → API trigger): адрес и ключ */
-  CLAUDE_ROUTINE_URL?: string;
-  CLAUDE_ROUTINE_TOKEN?: string;
   /** Бот Telegram для публикации в канал (секрет от @BotFather) */
   TG_BOT_TOKEN?: string;
   /** Только для локальной проверки (заглушка Bot API) */

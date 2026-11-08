@@ -10,14 +10,5 @@ export function Card({ title, children }: { title?: string; children: ReactNode 
 }
 
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-lg bg-slate-200 dark:bg-surface-container-highest ${className}`} />;
-}
-
-export function StatusDot({ ok }: { ok: boolean }) {
-  return (
-    <span
-      aria-hidden
-      className={`inline-block size-2.5 rounded-full ${ok ? "bg-wa" : "bg-red-500"}`}
-    />
-  );
+  return <div className={`animate-pulse rounded-lg bg-surface-container-highest ${className}`} />;
 }

@@ -23,8 +23,8 @@ import {
 import { ApiRequestError, apiGet, apiPost, apiPut } from "./client";
 import { ApiErrorSchema } from "../../shared/schemas";
 
-export const channelsKey = ["channels"] as const;
-export const postsKey = ["posts"] as const;
+const channelsKey = ["channels"] as const;
+const postsKey = ["posts"] as const;
 
 export function useChannels() {
   return useQuery<ChannelList>({ queryKey: channelsKey, queryFn: () => apiGet("/publish/channels", ChannelListSchema), staleTime: 10 * 60_000 });
@@ -104,7 +104,7 @@ export function useStats(from: number, to: number) {
   });
 }
 
-export const snippetsKey = ["snippets"] as const;
+const snippetsKey = ["snippets"] as const;
 export function useSnippets() {
   return useQuery<SnippetList>({ queryKey: snippetsKey, queryFn: () => apiGet("/publish/snippets", SnippetListSchema), staleTime: 10 * 60_000 });
 }
@@ -136,7 +136,7 @@ export function useBufferLimits() {
   return useQuery<BufferLimits>({ queryKey: ["buffer-limits"], queryFn: () => apiGet("/publish/limits", BufferLimitsSchema), staleTime: 10 * 60_000, retry: false });
 }
 
-export const directKey = ["direct-accounts"] as const;
+const directKey = ["direct-accounts"] as const;
 export function useDirectAccounts() {
   return useQuery<DirectAccounts>({ queryKey: directKey, queryFn: () => apiGet("/connect/accounts", DirectAccountsSchema), staleTime: 60_000 });
 }

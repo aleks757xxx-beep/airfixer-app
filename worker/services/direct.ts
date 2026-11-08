@@ -21,7 +21,7 @@ import { readSettings } from "../routes/settings";
 
 /** Прямая публикация (без Buffer): аккаунты, своя очередь со слотами, отправка к сроку (cron). */
 
-export const PUBLIC_ORIGIN = "https://app.airfixer.ge";
+const PUBLIC_ORIGIN = "https://app.airfixer.ge";
 const DAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DEFAULT_SLOTS = DAY_CODES.map((day) => ({ day, times: ["10:00", "19:00"], paused: false }));
 const PROCESS_TIMEOUT_MS = 45 * 60_000;

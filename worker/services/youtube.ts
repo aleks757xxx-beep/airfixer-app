@@ -16,10 +16,10 @@ export function setGoogleApiUrl(url: string | undefined): void {
 }
 
 /** ID клиента OAuth в Google Cloud (проект postfixer; не секрет). */
-export const GOOGLE_CLIENT_ID_DEFAULT = "310148509374-32vop8u1otmntakf7tgl0upnfmd16hcg.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID_DEFAULT = "310148509374-32vop8u1otmntakf7tgl0upnfmd16hcg.apps.googleusercontent.com";
 export const googleClientId = (env: { GOOGLE_CLIENT_ID?: string }) => env.GOOGLE_CLIENT_ID?.trim() || GOOGLE_CLIENT_ID_DEFAULT;
 
-export const YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
+const YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
 /** Кусок загрузки: кратно 256 КБ, как требует YouTube. */
 export const YT_CHUNK = 64 * 1024 * 1024;
 
@@ -133,7 +133,7 @@ export async function startUpload(
   return loc;
 }
 
-export type UploadState = { done: true; videoId: string } | { done: false; received: number };
+type UploadState = { done: true; videoId: string } | { done: false; received: number };
 
 function parseDone(raw: unknown): { done: true; videoId: string } {
   const d = z.object({ id: z.string() }).parse(raw);

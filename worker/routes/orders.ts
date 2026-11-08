@@ -1,5 +1,4 @@
 import { connectAgent } from "./connect";
-import { wakeClaude } from "../services/routine";
 import { Hono, type Context } from "hono";
 import type { AppBindings } from "../env";
 import {
@@ -147,7 +146,6 @@ export const orders = new Hono<AppBindings>()
       .bind(id, now)
       .run();
     await audit(c.env.DB, "order created", `#${id}`);
-    await wakeClaude(c.env.DB, `новый заказ монтажа #${id}: ${d.brief.slice(0, 150)}`);
     const order = await oneOrder(c.env.DB, id);
     return order ? c.json({ order }) : c.json({ error: "Не сохранилось" }, 500);
   })
@@ -155,14 +153,12 @@ export const orders = new Hono<AppBindings>()
     const p = OrderTextInputSchema.safeParse(await c.req.json().catch(() => null));
     if (!p.success) return c.json({ error: "Напишите, что поправить" }, 400);
     const r = await transition(c, { from: ["draft"], to: "revise", kind: "revise", author: "owner", text: p.data.text });
-    if (r.status === 200) await wakeClaude(c.env.DB, `правки к заказу #${c.req.param("id")}: ${p.data.text.slice(0, 150)}`);
     return r;
   })
   .post("/:id/comment", async (c) => {
     const p = OrderTextInputSchema.safeParse(await c.req.json().catch(() => null));
     if (!p.success) return c.json({ error: "Напишите текст" }, 400);
     const r = await transition(c, { from: OPEN, to: null, kind: "comment", author: "owner", text: p.data.text });
-    if (r.status === 200) await wakeClaude(c.env.DB, `комментарий к заказу #${c.req.param("id")}: ${p.data.text.slice(0, 150)}`);
     return r;
   })
   .post("/:id/accept", (c) => transition(c, { from: ["draft"], to: "accepted", kind: "accepted", author: "owner" }))

@@ -5,12 +5,6 @@ z.config({ jitless: true });
 
 /** Общие схемы для Worker и интерфейса. Типы выводятся из схем — один источник правды. */
 
-export const ServiceSchema = z.enum(["instagram", "facebook", "tiktok", "youtube"]);
-export type Service = z.infer<typeof ServiceSchema>;
-
-export const PostStatusSchema = z.enum(["draft", "scheduled", "published", "failed", "partial"]);
-export type PostStatus = z.infer<typeof PostStatusSchema>;
-
 export const HealthSchema = z.object({
   ok: z.boolean(),
   version: z.string(),
@@ -31,7 +25,6 @@ export const HealthSchema = z.object({
 export type Health = z.infer<typeof HealthSchema>;
 
 export const ApiErrorSchema = z.object({ error: z.string() });
-export type ApiError = z.infer<typeof ApiErrorSchema>;
 
 // ---------- Вход ----------
 /** anonymous — нужен пароль; mfa_setup — подключить 2FA; mfa_required — ввести код; ok — внутри. */
@@ -109,7 +102,6 @@ export const UploadStartInputSchema = z.object({
   name: z.string().min(1).max(200),
   size: z.number().int().positive().max(MAX_UPLOAD_BYTES),
 });
-export type UploadStartInput = z.infer<typeof UploadStartInputSchema>;
 
 export const UploadStartSchema = z.discriminatedUnion("duplicate", [
   z.object({ duplicate: z.literal(true), item: MediaItemSchema }),
@@ -126,7 +118,7 @@ export const ALLOWED_VIDEO_EXT = ["mp4", "mov", "m4v"] as const;
 // ---------- Настройки ----------
 /** Чат с Claude по умолчанию — текущий рабочий чат; меняется в «Состоянии». */
 export const DEFAULT_CLAUDE_URL = "https://claude.ai/code/session_01V1h3GHri8iWkFU8ZAPG15M";
-export const ClaudeUrlSchema = z
+const ClaudeUrlSchema = z
   .string()
   .trim()
   .max(500)
@@ -138,7 +130,6 @@ export const SettingsSchema = z.object({
   tgButtonText: z.string(),
   tgButtonUrl: z.string(),
   /** Claude берётся за задания сам (задача Claude с запуском по сигналу) */
-  claudeAuto: z.object({ configured: z.boolean(), lastFire: z.number().nullable(), pending: z.number() }).optional(),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 export const SettingsInputSchema = z.object({
@@ -203,15 +194,13 @@ export const OrderAgentInputSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("comment"), text: z.string().trim().min(1).max(NOTE_MAX) }),
   z.object({ kind: z.literal("draft"), mediaId: z.string().min(1), text: z.string().trim().max(NOTE_MAX).optional() }),
 ]);
-export type OrderAgentInput = z.infer<typeof OrderAgentInputSchema>;
 
 /** Оглавление «Исходников» (Claude обновляет с Mac): папки и даты съёмки. */
-export const SourceFolderSchema = z.object({
+const SourceFolderSchema = z.object({
   name: z.string().min(1).max(200),
   count: z.number().int().nonnegative(),
   dates: z.array(z.object({ date: isoDate, count: z.number().int().positive() })).max(2000),
 });
-export type SourceFolder = z.infer<typeof SourceFolderSchema>;
 export const SourcesIndexSchema = z.object({
   updatedAt: z.number().int().nullable(),
   folders: z.array(SourceFolderSchema).max(500),
@@ -220,8 +209,8 @@ export type SourcesIndex = z.infer<typeof SourcesIndexSchema>;
 export const SourcesIndexInputSchema = SourcesIndexSchema.pick({ folders: true });
 
 // ---------- Публикация (Buffer) ----------
-export const ChannelServiceSchema = z.string();
-export const ScheduleDaySchema = z.object({ day: z.string(), times: z.array(z.string()), paused: z.boolean() });
+const ChannelServiceSchema = z.string();
+const ScheduleDaySchema = z.object({ day: z.string(), times: z.array(z.string()), paused: z.boolean() });
 export const ChannelSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -239,8 +228,7 @@ export type Channel = z.infer<typeof ChannelSchema>;
 export const ChannelListSchema = z.object({ items: z.array(ChannelSchema) });
 export type ChannelList = z.infer<typeof ChannelListSchema>;
 
-export const BufferPostStatusSchema = z.enum(["draft", "error", "needs_approval", "scheduled", "sending", "sent"]);
-export type BufferPostStatus = z.infer<typeof BufferPostStatusSchema>;
+const BufferPostStatusSchema = z.enum(["draft", "error", "needs_approval", "scheduled", "sending", "sent"]);
 export const BufferPostSchema = z.object({
   id: z.string(),
   channelId: z.string(),
@@ -264,8 +252,8 @@ export type BufferPostList = z.infer<typeof BufferPostListSchema>;
 /** Как выпустить пост — как кнопки Buffer. */
 export const ShareModeSchema = z.enum(["queue", "next", "now", "schedule", "draft"]);
 export type ShareMode = z.infer<typeof ShareModeSchema>;
-export const POST_TEXT_MAX = 5000;
-export const ComposeTargetSchema = z.object({
+const POST_TEXT_MAX = 5000;
+const ComposeTargetSchema = z.object({
   channelId: z.string().min(1).max(100),
   text: z.string().max(POST_TEXT_MAX),
   /** Название (YouTube, TikTok, Google) */
