@@ -6,7 +6,8 @@
     "dev": "wrangler dev",
     "build:web": "vite build",
     "typecheck": "tsc -p tsconfig.worker.json && tsc -p tsconfig.web.json",
-    "check": "npm run typecheck && npm run build:web"
+    "check": "npm run typecheck && npm run build:web",
+    "test": "node --test --test-concurrency=1 --test-timeout=600000 tests/app.test.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261107.1",
