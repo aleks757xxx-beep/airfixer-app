@@ -146,7 +146,11 @@ export const SettingsInputSchema = z.object({
 export type SettingsInput = z.infer<typeof SettingsInputSchema>;
 /** Виды уведомлений в Telegram. */
 export const NotifyKindSchema = z.enum(["failed", "sent", "connection", "claude"]);
-export const NotifyInputSchema = z.object({ off: z.array(NotifyKindSchema).max(4) });
+export const NotifyInputSchema = z.object({
+  off: z.array(NotifyKindSchema).max(4).optional(),
+  /** ID личного чата владельца с ботом (число) */
+  chatId: z.string().trim().regex(/^-?\d{5,20}$/, "ID чата — только цифры").optional(),
+});
 
 // ---------- Заказы монтажа ----------
 export const OrderStatusSchema = z.enum(["new", "in_work", "draft", "revise", "accepted", "cancelled"]);

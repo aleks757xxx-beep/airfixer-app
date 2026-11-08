@@ -183,15 +183,32 @@ function NotifySettings() {
     const next = new Set(off);
     if (on) next.delete(kind);
     else next.add(kind);
-    save.mutate([...next]);
+    save.mutate({ off: [...next] });
   };
+  const [chat, setChat] = useState("");
   return (
     <M3Card className="space-y-1 p-4">
       <ListItem
         leading={<Icon name="send" />}
         headline="Уведомления в Telegram"
-        supporting={n?.connected ? "Приходят от @fixerairbot в ваш чат с ботом (тот же, где пишет CRM)" : "Чат не привязан — попросите Claude подключить"}
+        supporting={n?.connected ? "Приходят от @fixerairbot в ваш чат с ботом (тот же, где пишет CRM)" : "Чат не привязан — впишите ID чата (его даст Claude)"}
       />
+      {!n?.connected ? (
+        <form
+          className="flex flex-wrap items-end gap-3 pb-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate({ chatId: chat.trim() }, { onSuccess: () => setChat("") });
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <TextField label="ID чата в Telegram" value={chat} onChange={setChat} inputMode="numeric" />
+          </div>
+          <Button type="submit" variant="tonal" disabled={!chat.trim() || save.isPending} className="mb-2">
+            Сохранить
+          </Button>
+        </form>
+      ) : null}
       {NOTIFY.map((x) => (
         <Switch key={x.kind} label={x.label} supporting={x.supporting} checked={!off.has(x.kind)} disabled={!n?.connected || save.isPending} onChange={(v) => toggle(x.kind, v)} />
       ))}

@@ -20,7 +20,7 @@ export function useSaveSettings() {
 export function useSaveNotify() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (off: string[]) => apiPut("/settings/notify", OkSchema, { off }),
+    mutationFn: (input: { off?: string[]; chatId?: string }) => apiPut("/settings/notify", OkSchema, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: settingsKey }),
   });
 }

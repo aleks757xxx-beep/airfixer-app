@@ -34,12 +34,16 @@ export const settings = new Hono<AppBindings>()
   // Какие уведомления присылать
   .put("/notify", async (c) => {
     const p = NotifyInputSchema.safeParse(await c.req.json().catch(() => null));
-    if (!p.success) return c.json({ error: "Неверные настройки уведомлений" }, 400);
-    await c.env.DB.prepare(
-      "INSERT INTO app_settings (key, value, updated_at) VALUES ('notify_off', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-    )
-      .bind(JSON.stringify(p.data.off), Date.now())
-      .run();
+    if (!p.success) return c.json({ error: p.error.issues[0]?.message ?? "Неверные настройки уведомлений" }, 400);
+    const put = (key: string, value: string) =>
+      c.env.DB.prepare(
+        "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+      ).bind(key, value, Date.now());
+    const stmts = [];
+    if (p.data.off) stmts.push(put("notify_off", JSON.stringify(p.data.off)));
+    if (p.data.chatId) stmts.push(put("notify_chat_id", p.data.chatId));
+    if (stmts.length) await c.env.DB.batch(stmts);
+    if (p.data.chatId) await audit(c.env.DB, "notify chat set");
     return c.json({ ok: true as const });
   })
   // Проверочное сообщение

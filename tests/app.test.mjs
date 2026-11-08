@@ -119,6 +119,7 @@ describe("уведомления в Telegram", () => {
     assert.equal((await s.api("/api/v2/settings/notify", { method: "PUT", cookie, body: { off: ["sent"] } })).status, 200);
     assert.deepEqual((await s.api("/api/v2/settings", { cookie })).data.notify.off, ["sent"]);
     assert.equal((await s.api("/api/v2/settings/notify", { method: "PUT", cookie, body: { off: [] } })).status, 200);
+    assert.equal((await s.api("/api/v2/settings/notify", { method: "PUT", cookie, body: { chatId: "12ab" } })).status, 400, "ID чата — только цифры");
   });
 });
 
