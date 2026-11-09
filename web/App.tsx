@@ -63,8 +63,8 @@ export function App() {
     <div className="min-h-dvh overflow-x-clip bg-surface pb-20 md:pb-0 md:pl-20">
       {/* Боковая панель (Navigation rail) — компьютер */}
       <nav aria-label="Разделы" className="fixed inset-y-0 left-0 z-20 hidden w-20 flex-col items-center gap-3 bg-surface pt-4 md:flex">
-        <a href="#/calendar" aria-label="PostFixer" className="mb-4 flex size-14 items-center justify-center rounded-m3l bg-primary-container text-2xl">
-          🍁
+        <a href="#/calendar" aria-label="PostFixer" className="mb-4 block size-14 overflow-hidden rounded-m3l">
+          <img src="/logo-96.png" alt="" width={56} height={56} className="size-14" />
         </a>
         {NAV.map((n) => (
           <NavItem key={n.route} {...n} active={route === n.route} rail />
@@ -76,9 +76,7 @@ export function App() {
 
       {/* Верхняя панель (Top app bar) */}
       <header className="sticky top-0 z-10 flex h-16 items-center gap-1 bg-surface/95 px-2 backdrop-blur md:px-6">
-        <span className="ml-2 text-xl md:hidden" aria-hidden>
-          🍁
-        </span>
+        <img src="/logo-96.png" alt="" aria-hidden width={32} height={32} className="ml-2 size-8 rounded-m3s md:hidden" />
         <h1 className="type-title-l ml-3 text-on-surface md:ml-0">{TITLES[route]}</h1>
         <IconButton icon="refresh" label="Обновить" className="ml-auto" onClick={reloadApp} />
         <button

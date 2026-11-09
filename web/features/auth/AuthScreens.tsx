@@ -7,7 +7,10 @@ function Shell({ title, subtitle, children }: { title: string; subtitle: string;
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
       <div className="w-full max-w-sm rounded-m3xl border border-outline-variant bg-surface-container p-6">
-        <h1 className="text-2xl font-extrabold">🍁 {title}</h1>
+        <h1 className="flex items-center gap-3 text-2xl font-extrabold">
+          <img src="/logo-96.png" alt="" width={44} height={44} className="size-11 rounded-m3m" />
+          {title}
+        </h1>
         <p className="mb-5 mt-1 font-semibold text-primary">{subtitle}</p>
         {children}
       </div>
