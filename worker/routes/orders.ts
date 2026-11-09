@@ -6,6 +6,9 @@ import {
   OrderAgentInputSchema,
   OrderInputSchema,
   OrderTextInputSchema,
+  MediaRenameInputSchema,
+  MediaSourcesInputSchema,
+  SourceRenamedInputSchema,
   SourcesIndexInputSchema,
   SourcesIndexSchema,
   type Order,
@@ -13,11 +16,13 @@ import {
   type OrderEventKind,
   type OrderList,
   type OrderStatus,
+  type SourceRenames,
   type SourcesIndex,
 } from "../../shared/schemas";
 import { audit } from "../middleware/auth";
 import { BufferError, bufferIntrospectType } from "../services/buffer";
-import { MEDIA_COLS, migrated, toItem, uploadToken, type MediaRow } from "./media";
+import { MEDIA_COLS, cleanName, migrated, toItem, uploadToken, type MediaRow } from "./media";
+import { markRenamed, renameMedia, setSources, sourceRenames } from "../services/sources";
 
 interface OrderRow {
   id: number;
@@ -227,4 +232,34 @@ export const ordersAgent = new Hono<AppBindings>()
       .bind(JSON.stringify(p.data), Date.now())
       .run();
     return c.json(await readSources(c.env.DB));
+  })
+  // Пометка использованных исходников (решение владельца 09.11.2026): после монтажа — список исходников ролика
+  .put("/media/:id/sources", async (c) => {
+    const p = MediaSourcesInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!p.success) return c.json({ error: p.error.issues[0]?.message ?? "Неверный список исходников" }, 400);
+    const m = await c.env.DB.prepare("SELECT id FROM media WHERE id = ?").bind(c.req.param("id")).first();
+    if (!m) return c.json({ error: "Ролик не найден" }, 404);
+    await setSources(c.env.DB, c.req.param("id"), p.data.items);
+    return c.json({ ok: true as const });
+  })
+  // Что переименовать на Mac (gotovoeMax — наибольший номер ролика в папке «Готовое» на диске)
+  .get("/sources/renames", async (c) => {
+    const max = Number(c.req.query("gotovoeMax") ?? 0);
+    const r: SourceRenames = await sourceRenames(c.env.DB, Number.isFinite(max) && max > 0 ? Math.floor(max) : 0);
+    return c.json(r);
+  })
+  .post("/sources/renamed", async (c) => {
+    const p = SourceRenamedInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!p.success) return c.json({ error: "Неверные данные" }, 400);
+    const n = await markRenamed(c.env.DB, p.data.folder, p.data.from, p.data.to);
+    if (!n) return c.json({ error: "Такого исходника нет в списке" }, 404);
+    return c.json({ ok: true as const });
+  })
+  // Ролик в «Готовом» переименован (сначала сюда, потом mv — чтобы автозагрузка не приняла его за новый)
+  .post("/media/:id/rename", async (c) => {
+    const p = MediaRenameInputSchema.safeParse(await c.req.json().catch(() => null));
+    if (!p.success) return c.json({ error: "Неверное имя" }, 400);
+    if (!(await renameMedia(c.env.DB, c.req.param("id"), cleanName(p.data.name)))) return c.json({ error: "Ролик не найден" }, 404);
+    await audit(c.env.DB, `media renamed (claude): ${p.data.name}`);
+    return c.json({ ok: true as const });
   });

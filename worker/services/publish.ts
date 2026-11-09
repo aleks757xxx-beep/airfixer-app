@@ -269,8 +269,8 @@ export async function createPosts(
         continue;
       }
       await db
-        .prepare("INSERT OR REPLACE INTO post_media (buffer_post_id, media_id, channel_id, author, created_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(post.id, input.mediaId, ch.id, author, Date.now())
+        .prepare("INSERT OR REPLACE INTO post_media (buffer_post_id, media_id, channel_id, author, created_at, draft) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(post.id, input.mediaId, ch.id, author, Date.now(), input.mode === "draft" ? 1 : null)
         .run();
       results.push({ channelId: ch.id, ok: true, postId: post.id, error: null });
     } catch (e: unknown) {
@@ -285,6 +285,8 @@ async function oneResult(apiKey: string, db: D1Database, query: string, field: s
   const d = await bufferQuery(apiKey, query, z.record(z.string(), ActionResult), variables);
   const r = d[field];
   if (!r?.post) throw new BufferError(r?.message ?? "Buffer не выполнил действие");
+  // черновик могли запланировать (или наоборот) — для пометки исходников
+  await db.prepare("UPDATE post_media SET draft = ? WHERE buffer_post_id = ?").bind(r.post.status === "draft" ? 1 : null, r.post.id).run();
   await invalidatePosts(db);
   const media = await mediaForPosts(db, [r.post.id]);
   return toPost(r.post, media);

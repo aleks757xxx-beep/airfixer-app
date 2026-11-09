@@ -308,6 +308,57 @@ describe("повтор роликов", () => {
   });
 });
 
+describe("пометка исходников", () => {
+  test("номер ролика и пометки исходников — когда запланирован; сняли пост — пометка уходит", async () => {
+    const A = "/api/v2/ingest/agent";
+    const renames = () => s.api(`${A}/sources/renames?gotovoeMax=18`, { agent: true }).then((r) => r.data);
+    const m1 = await s.upload("Монтаж #7 v1 Тест исходников.mp4", 21_000);
+    const bad = await s.api(`${A}/media/${m1.id}/sources`, { method: "PUT", agent: true, body: { items: [{ folder: "..", file: "x.MOV" }] } });
+    assert.equal(bad.status, 400, "путь вне «Исходников» не принимается");
+    const put = await s.api(`${A}/media/${m1.id}/sources`, {
+      method: "PUT",
+      agent: true,
+      body: { items: [{ folder: "Чистка", file: "IMG_1.MOV" }, { folder: "Чистка", file: "IMG_2.MOV", from: 65, to: 70 }, { folder: "Чистка", file: "IMG_2.MOV", from: 12, to: 20 }] },
+    });
+    assert.equal(put.status, 200);
+    assert.deepEqual(await renames(), { sources: [], gotovoe: [] }, "не запланирован — не трогаем");
+    const post1 = (mode, extra = {}) =>
+      s.api(`${A}/publish/posts`, { method: "POST", agent: true, body: { mediaId: m1.id, mode, ...extra, targets: [{ channelId: "fb:p1", text: "Исходники" }] } });
+    await post1("draft");
+    assert.deepEqual((await renames()).sources, [], "черновик — ещё не запланирован");
+    const sched = await post1("schedule", { dueAt: Date.now() + 2 * 86400000 });
+    assert.ok(sched.data.results[0].ok);
+    const r1 = await renames();
+    assert.deepEqual(r1.gotovoe, [{ mediaId: m1.id, number: 19, from: "Монтаж #7 v1 Тест исходников.mp4", to: "19 Тест исходников (заказ #7 v1).mp4" }]);
+    const by = (r, f) => r.sources.find((x) => x.from === f)?.to;
+    assert.equal(by(r1, "IMG_1.MOV"), "#19 IMG_1.MOV");
+    assert.equal(by(r1, "IMG_2.MOV"), "#19 (0:12–0:20, 1:05–1:10) IMG_2.MOV");
+    // Claude переименовал на Mac
+    assert.equal((await s.api(`${A}/media/${m1.id}/rename`, { method: "POST", agent: true, body: { name: r1.gotovoe[0].to } })).status, 200);
+    assert.equal((await s.api(`${A}/sources/renamed`, { method: "POST", agent: true, body: { folder: "Чистка", from: "IMG_1.MOV", to: "#19 IMG_1.MOV" } })).status, 200);
+    const r2 = await renames();
+    assert.deepEqual(r2.gotovoe, []);
+    assert.deepEqual(r2.sources.map((x) => x.from), ["IMG_2.MOV"]);
+    const again = await s.api("/api/v2/ingest", { method: "POST", agent: true, body: { name: "19 Тест исходников (заказ #7 v1).mp4", size: 21_000 } });
+    assert.equal(again.data.duplicate, true, "переименованный файл не грузится заново");
+    const lib = await s.api("/api/v2/media", { cookie });
+    assert.equal(lib.data.items.find((m) => m.id === m1.id).number, 19);
+    // второй ролик взял тот же файл целиком → «#19 #20»
+    const m2 = await s.upload("Монтаж #8 v1 Второй.mp4", 22_000);
+    await s.api(`${A}/media/${m2.id}/sources`, { method: "PUT", agent: true, body: { items: [{ folder: "Чистка", file: "#19 IMG_1.MOV" }] } });
+    const p2 = await s.api(`${A}/publish/posts`, { method: "POST", agent: true, body: { mediaId: m2.id, mode: "queue", targets: [{ channelId: "fb:p1", text: "Второй" }] } });
+    const r3 = await renames();
+    assert.equal(by(r3, "#19 IMG_1.MOV"), "#19 #20 IMG_1.MOV");
+    assert.equal(r3.gotovoe[0].to, "20 Второй (заказ #8 v1).mp4");
+    // пост второго ролика сняли до выхода — пометка #20 не нужна
+    assert.equal((await s.api(`${A}/publish/posts/${p2.data.results[0].postId}`, { method: "DELETE", agent: true })).status, 200);
+    const r4 = await renames();
+    assert.equal(by(r4, "#19 IMG_1.MOV"), undefined);
+    assert.deepEqual(r4.gotovoe, []);
+    s.sql(`DELETE FROM direct_posts WHERE media_id IN ('${m1.id}', '${m2.id}')`);
+  });
+});
+
 describe("уведомления о сбоях и работе Claude", () => {
   test("пост не вышел — сообщение с причиной и кнопкой", async () => {
     const extra = await s.upload("Удалится.mp4", 12_000);

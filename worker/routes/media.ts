@@ -38,6 +38,7 @@ export interface MediaRow {
   note_at: number | null;
   tg_size?: number | null;
   repostable?: number | null;
+  number?: number | null;
 }
 interface UploadRow {
   id: string;
@@ -65,13 +66,14 @@ export const toItem = (r: MediaRow): MediaItem => ({
   noteAt: r.note_at,
   tgSize: r.tg_size ?? null,
   repostable: r.repostable === 1,
+  number: r.number ?? null,
 });
 export const MEDIA_COLS =
-  "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at, repostable, (SELECT v.size FROM media_variants v WHERE v.media_id = media.id AND v.kind = 'tg') AS tg_size";
+  "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at, repostable, number, (SELECT v.size FROM media_variants v WHERE v.media_id = media.id AND v.kind = 'tg') AS tg_size";
 
 /** «имя.tg.mp4» — лёгкая копия ролика «имя.mp4» для Telegram (до 50 МБ). */
 const TG_VARIANT = /\.tg\.(mp4|mov|m4v)$/i;
-const baseOf = (name: string) => (TG_VARIANT.test(name) ? name.replace(TG_VARIANT, "") : name.replace(/\.[a-z0-9]+$/i, "")).normalize("NFC").toLowerCase();
+export const baseOf = (name: string) => (TG_VARIANT.test(name) ? name.replace(TG_VARIANT, "") : name.replace(/\.[a-z0-9]+$/i, "")).normalize("NFC").toLowerCase();
 
 function extOf(name: string): string | null {
   const m = /\.([a-z0-9]+)$/i.exec(name);
@@ -79,7 +81,7 @@ function extOf(name: string): string | null {
   return ext && (ALLOWED_VIDEO_EXT as ReadonlyArray<string>).includes(ext) ? ext : null;
 }
 const mimeFor = (ext: string) => (ext === "mov" ? "video/quicktime" : "video/mp4");
-const cleanName = (raw: string) => raw.normalize("NFC").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 160) || "video.mp4";
+export const cleanName = (raw: string) => raw.normalize("NFC").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 160) || "video.mp4";
 
 type Ctx = Context<AppBindings>;
 const partsCount = (size: number) => Math.max(1, Math.ceil(size / PART_SIZE));

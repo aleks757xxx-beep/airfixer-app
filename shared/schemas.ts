@@ -76,9 +76,38 @@ export const MediaItemSchema = z.object({
   tgSize: z.number().int().nullable().optional(),
   /** Владелец отметил «можно повторять» */
   repostable: z.boolean().optional(),
+  /** Номер ролика в «Готовом» (даётся, когда ролик впервые запланирован) */
+  number: z.number().int().nullable().optional(),
 });
 export type MediaItem = z.infer<typeof MediaItemSchema>;
 export const RepostInputSchema = z.object({ on: z.boolean() });
+
+/** Имя папки/файла в «Исходниках»: без «/» и служебных символов. */
+const DiskNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .refine((v) => !/[/\\\u0000-\u001f]/.test(v) && v !== "." && v !== "..", "Недопустимое имя");
+
+/** Claude после монтажа: какие исходники вошли в ролик (кусок — секунды). */
+export const MediaSourcesInputSchema = z.object({
+  items: z
+    .array(
+      z
+        .object({ folder: DiskNameSchema, file: DiskNameSchema, from: z.number().min(0).optional(), to: z.number().min(0).optional() })
+        .refine((x) => (x.from === undefined) === (x.to === undefined) && (x.to === undefined || x.to > (x.from ?? 0)), "Кусок: from < to"),
+    )
+    .max(300),
+});
+/** Что переименовать на Mac: исходники и сам ролик в «Готовом». */
+export const SourceRenamesSchema = z.object({
+  sources: z.array(z.object({ folder: z.string(), from: z.string(), to: z.string() })),
+  gotovoe: z.array(z.object({ mediaId: z.string(), number: z.number().int(), from: z.string(), to: z.string() })),
+});
+export type SourceRenames = z.infer<typeof SourceRenamesSchema>;
+export const SourceRenamedInputSchema = z.object({ folder: DiskNameSchema, from: DiskNameSchema, to: DiskNameSchema });
+export const MediaRenameInputSchema = z.object({ name: DiskNameSchema });
 
 /** Повтор роликов: что и куда можно выложить снова. */
 export const RepostListSchema = z.object({

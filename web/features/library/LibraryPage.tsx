@@ -121,6 +121,7 @@ function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: ()
       </a>
       <div className="p-2.5">
         <p className="line-clamp-2 text-sm font-semibold leading-snug" title={item.name}>
+          {item.number && !item.name.startsWith(`${item.number} `) ? <span className="mr-1 text-primary">№{item.number}</span> : null}
           {item.name}
         </p>
         <p className="mt-1 text-xs text-on-surface-variant">
