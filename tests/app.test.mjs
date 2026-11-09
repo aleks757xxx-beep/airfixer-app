@@ -271,6 +271,22 @@ describe("лучшее время", () => {
     assert.ok(due > Date.now() && due < Date.now() + 7 * day);
     s.sql(`DELETE FROM direct_posts WHERE id = '${id}'`);
   });
+
+  test("«В очередь» в несколько соцсетей — по одной в день, сначала где больше просмотров", async () => {
+    const targets = ["tg:-1001234567890", "fb:p1", "th:9988"].map((channelId) => ({ channelId, text: "Разнести" }));
+    const r = await s.api("/api/v2/ingest/agent/publish/posts", { method: "POST", agent: true, body: { mediaId: media.id, mode: "queue", targets } });
+    assert.ok(r.data.results.every((x) => x.ok), JSON.stringify(r.data));
+    const ids = r.data.results.map((x) => `'${x.postId}'`).join(",");
+    const rows = s.sql(`SELECT account_id, due_at FROM direct_posts WHERE id IN (${ids}) ORDER BY due_at`);
+    const tb = (t) => new Date(t + 4 * 3600000);
+    const days = rows.map((x) => tb(x.due_at).toISOString().slice(0, 10));
+    assert.equal(new Set(days).size, 3, `разные дни: ${days}`);
+    for (let i = 1; i < days.length; i++) assert.equal((Date.parse(days[i]) - Date.parse(days[i - 1])) / 86400000, 1, "дни подряд");
+    assert.ok(rows.every((x) => tb(x.due_at).getUTCHours() >= 8 && tb(x.due_at).getUTCHours() <= 22));
+    assert.equal(rows[0].account_id, "fb:p1", "первой — соцсеть с наибольшими просмотрами");
+    assert.equal(tb(rows[0].due_at).getUTCHours(), 19, "в её лучший час");
+    s.sql(`DELETE FROM direct_posts WHERE id IN (${ids})`);
+  });
 });
 
 describe("повтор роликов", () => {

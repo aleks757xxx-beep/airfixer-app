@@ -187,3 +187,52 @@ export async function isExploreTurn(db: D1Database, channelId: string): Promise<
   const r = await db.prepare("SELECT COUNT(*) AS n FROM direct_posts WHERE account_id = ? AND status != 'draft'").bind(channelId).first<{ n: number }>();
   return ((r?.n ?? 0) + 1) % 5 === 0;
 }
+
+/** Средние просмотры поста по каналам (для порядка «сначала где больше смотрят»). */
+async function reach(db: D1Database): Promise<Map<string, number>> {
+  const out = new Map<string, { s: number; w: number }>();
+  for (const x of await samples(db)) {
+    const c = out.get(x.channelId) ?? { s: 0, w: 0 };
+    out.set(x.channelId, { s: c.s + x.views * x.w, w: c.w + x.w });
+  }
+  return new Map([...out].map(([k, v]) => [k, v.w ? v.s / v.w : 0]));
+}
+
+/**
+ * «В очередь» в несколько соцсетей (решение владельца 09.11.2026): один ролик — по одной соцсети в день,
+ * чтобы человек, подписанный на несколько, не видел его везде сразу. Порядок — сначала где больше просмотров,
+ * время — лучший час соцсети в её день (8:00–22:00, не ближе 3 ч к другим её постам).
+ */
+export async function spreadSlots(
+  db: D1Database,
+  channelIds: ReadonlyArray<string>,
+  busyOf: (channelId: string) => ReadonlyArray<number>,
+  now = Date.now(),
+): Promise<Map<string, number>> {
+  const { global, byChannel } = await profiles(db);
+  const views = await reach(db);
+  const order = [...channelIds].sort((a, b) => (views.get(b) ?? -1) - (views.get(a) ?? -1));
+  const start = now + 15 * 60_000;
+  const dayStart = Date.UTC(local(now).getUTCFullYear(), local(now).getUTCMonth(), local(now).getUTCDate()) - TBILISI_OFFSET_MS;
+  const out = new Map<string, number>();
+  let day = 0;
+  for (const ch of order) {
+    const p = byChannel.get(ch) ?? (global.samples >= MIN_SAMPLES ? global : null);
+    const busy = busyOf(ch);
+    for (let tries = 0; tries < 30; tries++, day++) {
+      let best: { at: number; v: number } | null = null;
+      for (let h = HOUR_FROM; h <= HOUR_TO; h++) {
+        const at = dayStart + day * 86_400_000 + h * 3_600_000;
+        if (at < start || busy.some((b) => Math.abs(b - at) < GAP_MS)) continue;
+        const v = p ? score(p, dayOf(at), h) : -Math.abs(h - 12); // нет данных — ближе к полудню
+        if (!best || v > best.v) best = { at, v };
+      }
+      if (best) {
+        out.set(ch, best.at);
+        day++;
+        break;
+      }
+    }
+  }
+  return out;
+}

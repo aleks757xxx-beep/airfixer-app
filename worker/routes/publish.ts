@@ -1,6 +1,6 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import type { AppBindings } from "../env";
-import { ComposeInputSchema, MovePostInputSchema, PostTextInputSchema, SnippetInputSchema, type SnippetList, type BufferPostList, type ChannelList } from "../../shared/schemas";
+import { ComposeInputSchema, MovePostInputSchema, PostTextInputSchema, SnippetInputSchema, type ComposeInput, type ComposeResult, type SnippetList, type BufferPostList, type ChannelList } from "../../shared/schemas";
 import { audit } from "../middleware/auth";
 import { BufferError } from "../services/buffer";
 import {
@@ -20,7 +20,7 @@ import {
 } from "../services/publish";
 import { migrated, uploadToken } from "./media";
 import { allStats, archiveBufferHistory } from "../services/history";
-import { bestSlot, bestTimes, isExploreTurn } from "../services/besttime";
+import { bestSlot, bestTimes, isExploreTurn, spreadSlots } from "../services/besttime";
 import { listReposts } from "../services/reposts";
 import { MetaError } from "../services/meta";
 import { TelegramError } from "../services/telegram";
@@ -54,6 +54,44 @@ const needKey: MiddlewareHandler<AppBindings> = async (c, next) => {
   if (!apiKey(c)) return c.json({ error: "Нет ключа Buffer (BUFFER_API_KEY)" }, 503);
   await next();
 };
+
+/** «В очередь» в несколько соцсетей: по одной соцсети в день, сначала где больше просмотров (решение владельца 09.11.2026). */
+async function composeSpread(
+  c: Ctx,
+  input: ComposeInput,
+  directTargets: ComposeInput["targets"],
+  bufferTargets: ComposeInput["targets"],
+  videoUrl: string,
+  author: "owner" | "claude",
+  mediaName: string,
+): Promise<ComposeResult> {
+  const now = Date.now();
+  const key = apiKey(c);
+  const directBusy = await c.env.DB.prepare("SELECT account_id, due_at FROM direct_posts WHERE status IN ('scheduled','processing') AND due_at > ?")
+    .bind(now - 3 * 3_600_000)
+    .all<{ account_id: string; due_at: number }>();
+  const planned = key && bufferTargets.length ? await listPosts(key, c.env.DB, now - 3 * 3_600_000, now + 40 * 86_400_000).catch(() => ({ items: [], drafts: [] })) : { items: [], drafts: [] };
+  const busyOf = (ch: string) => [
+    ...directBusy.results.filter((r) => r.account_id === ch).map((r) => r.due_at),
+    ...planned.items.filter((p) => p.channelId === ch && p.status === "scheduled" && p.dueAt).map((p) => p.dueAt as number),
+  ];
+  const slots = await spreadSlots(c.env.DB, input.targets.map((t) => t.channelId), busyOf, now);
+  const results: ComposeResult["results"] = [];
+  for (const t of directTargets) {
+    const at = slots.get(t.channelId);
+    results.push(...(await createDirectPosts(c.env.DB, at ? { ...input, mode: "schedule", dueAt: at } : input, [t], author)));
+  }
+  for (const t of bufferTargets) {
+    if (!key) {
+      results.push({ channelId: t.channelId, ok: false, postId: null, error: "Нет ключа Buffer" });
+      continue;
+    }
+    const at = slots.get(t.channelId);
+    results.push(...(await createPosts(key, c.env.DB, at ? { ...input, mode: "schedule", dueAt: at, targets: [t] } : { ...input, targets: [t] }, videoUrl, author)).results);
+  }
+  await audit(c.env.DB, `publish queue-spread (${author})`, `${mediaName}: ${results.filter((r) => r.ok).length}/${results.length}`);
+  return { results };
+}
 
 /** Одни и те же действия — для владельца (после входа) и для Claude (по токену). */
 function build(author: "owner" | "claude") {
@@ -99,6 +137,9 @@ function build(author: "owner" | "claude") {
       try {
         const directTargets = parsed.data.targets.filter((t) => isDirectChannel(t.channelId));
         const bufferTargets = parsed.data.targets.filter((t) => !isDirectChannel(t.channelId));
+        if (parsed.data.mode === "queue" && parsed.data.targets.length > 1) {
+          return c.json(await composeSpread(c, parsed.data, directTargets, bufferTargets, videoUrl, author, m.name));
+        }
         const results = await createDirectPosts(c.env.DB, parsed.data, directTargets, author);
         if (bufferTargets.length) {
           const key = apiKey(c);
