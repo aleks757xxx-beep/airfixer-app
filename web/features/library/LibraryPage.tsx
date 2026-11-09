@@ -263,7 +263,7 @@ export function LibraryPage() {
       ) : items.length === 0 ? (
         <Card>
           <p className="text-on-surface-variant">
-            Пока пусто. Нажмите «+ Загрузить» и выберите ролик (на iPhone: «Файлы» → iCloud Drive → ALEXFIXER → Готовое), или
+            Пока пусто. Нажмите «+ Загрузить» и выберите ролик (на iPhone: «Файлы» → iCloud Drive → SMM → Готовое), или
             включите автозагрузку с Mac.
           </p>
         </Card>
