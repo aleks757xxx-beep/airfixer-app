@@ -7,7 +7,7 @@ import { dayKey, fromTb } from "../../lib/time";
 import { ServiceBadge, channelLabel } from "./channels";
 
 const MODES: ReadonlyArray<{ mode: ShareMode; label: string; button: string; hint: string }> = [
-  { mode: "queue", label: "В очередь", button: "Добавить в очередь", hint: "В лучший час каждой соцсети; несколько соцсетей — по одной в день, сначала где больше просмотров" },
+  { mode: "queue", label: "В очередь", button: "Добавить в очередь", hint: "В лучший час каждой соцсети; несколько соцсетей — по одной раз в 3 дня, сначала где больше просмотров" },
   { mode: "next", label: "Следующим", button: "Поставить следующим", hint: "Первым в очереди — выйдет в ближайший слот" },
   { mode: "schedule", label: "На время", button: "Запланировать", hint: "Точная дата и время (Тбилиси)" },
   { mode: "now", label: "Сейчас", button: "Опубликовать сейчас", hint: "Выйдет сразу" },
