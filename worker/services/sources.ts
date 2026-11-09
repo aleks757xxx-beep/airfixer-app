@@ -34,6 +34,7 @@ async function scheduled(db: D1Database): Promise<Map<string, number>> {
       `SELECT media_id, MIN(at) AS at FROM (
          SELECT media_id, created_at AS at FROM direct_posts WHERE status != 'draft'
          UNION ALL SELECT media_id, created_at AS at FROM post_media WHERE COALESCE(draft, 0) = 0
+         UNION ALL SELECT id AS media_id, created_at AS at FROM media WHERE published_outside = 1
        ) GROUP BY media_id`,
     )
     .all<{ media_id: string; at: number }>();
@@ -145,4 +146,12 @@ export async function renameMedia(db: D1Database, id: string, name: string): Pro
       .bind(baseOf(name), stem, id),
   ]);
   return true;
+}
+
+/** Ролик вышел мимо PostFixer: задать его номер в «Готовом» (например, 18) — его исходники будут помечены. */
+export async function markPublishedOutside(db: D1Database, id: string, number: number): Promise<boolean> {
+  const taken = await db.prepare("SELECT id FROM media WHERE number = ? AND id != ?").bind(number, id).first();
+  if (taken) throw new Error(`Номер ${number} уже у другого ролика`);
+  const r = await db.prepare("UPDATE media SET number = ?, published_outside = 1 WHERE id = ?").bind(number, id).run();
+  return (r.meta.changes ?? 0) > 0;
 }

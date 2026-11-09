@@ -355,6 +355,14 @@ describe("пометка исходников", () => {
     const r4 = await renames();
     assert.equal(by(r4, "#19 IMG_1.MOV"), undefined);
     assert.deepEqual(r4.gotovoe, []);
+    // ролик, вышедший мимо PostFixer (как старый 18-й): номер задаёт Claude, исходники помечаются
+    const m3 = await s.upload("18 Старый.mp4", 23_000);
+    await s.api(`${A}/media/${m3.id}/sources`, { method: "PUT", agent: true, body: { items: [{ folder: "Установка", file: "DJI_1.mp4", from: 7, to: 10 }] } });
+    assert.equal((await s.api(`${A}/media/${m3.id}/published`, { method: "PUT", agent: true, body: { number: 19 } })).status, 409, "номер занят");
+    assert.equal((await s.api(`${A}/media/${m3.id}/published`, { method: "PUT", agent: true, body: { number: 18 } })).status, 200);
+    const r5 = await renames();
+    assert.equal(by(r5, "DJI_1.mp4"), "#18 (0:07–0:10) DJI_1.mp4");
+    assert.ok(!r5.gotovoe.some((g) => g.mediaId === m3.id), "имя «18 …» уже с номером");
     s.sql(`DELETE FROM direct_posts WHERE media_id IN ('${m1.id}', '${m2.id}')`);
   });
 });

@@ -22,7 +22,7 @@ import {
 import { audit } from "../middleware/auth";
 import { BufferError, bufferIntrospectType } from "../services/buffer";
 import { MEDIA_COLS, cleanName, migrated, toItem, uploadToken, type MediaRow } from "./media";
-import { markRenamed, renameMedia, setSources, sourceRenames } from "../services/sources";
+import { markPublishedOutside, markRenamed, renameMedia, setSources, sourceRenames } from "../services/sources";
 
 interface OrderRow {
   id: number;
@@ -240,6 +240,17 @@ export const ordersAgent = new Hono<AppBindings>()
     const m = await c.env.DB.prepare("SELECT id FROM media WHERE id = ?").bind(c.req.param("id")).first();
     if (!m) return c.json({ error: "Ролик не найден" }, 404);
     await setSources(c.env.DB, c.req.param("id"), p.data.items);
+    return c.json({ ok: true as const });
+  })
+  // Ролик вышел мимо PostFixer — номер в «Готовом», исходники помечаются
+  .put("/media/:id/published", async (c) => {
+    const p = z.object({ number: z.number().int().min(1).max(100_000) }).safeParse(await c.req.json().catch(() => null));
+    if (!p.success) return c.json({ error: "Неверный номер" }, 400);
+    try {
+      if (!(await markPublishedOutside(c.env.DB, c.req.param("id"), p.data.number))) return c.json({ error: "Ролик не найден" }, 404);
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : "Ошибка" }, 409);
+    }
     return c.json({ ok: true as const });
   })
   // Что переименовать на Mac (gotovoeMax — наибольший номер ролика в папке «Готовое» на диске)
