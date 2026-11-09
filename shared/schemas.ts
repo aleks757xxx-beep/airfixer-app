@@ -222,9 +222,9 @@ export const BestTimesSchema = z.object({
 });
 export type BestTimes = z.infer<typeof BestTimesSchema>;
 /** Виды уведомлений в Telegram. */
-export const NotifyKindSchema = z.enum(["failed", "sent", "connection", "claude"]);
+export const NotifyKindSchema = z.enum(["failed", "sent", "connection", "claude", "idle"]);
 export const NotifyInputSchema = z.object({
-  off: z.array(NotifyKindSchema).max(4).optional(),
+  off: z.array(NotifyKindSchema).max(5).optional(),
   /** ID личного чата владельца с ботом (число) */
   chatId: z.string().trim().regex(/^-?\d{5,20}$/, "ID чата — только цифры").optional(),
 });

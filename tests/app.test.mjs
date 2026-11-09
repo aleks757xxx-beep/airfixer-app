@@ -415,6 +415,35 @@ describe("уведомления о сбоях и работе Claude", () => {
   });
 });
 
+describe("правила публикации", () => {
+  test("«В очередь» — только в часы для ответов (будни 18–22, выходные 10–22) и не чаще нормы соцсети", async () => {
+    const r1 = await s.api("/api/v2/ingest/agent/publish/posts", { method: "POST", agent: true, body: { mediaId: media.id, mode: "queue", targets: [{ channelId: "th:9988", text: "Правило 1" }] } });
+    const r2 = await s.api("/api/v2/ingest/agent/publish/posts", { method: "POST", agent: true, body: { mediaId: media.id, mode: "queue", targets: [{ channelId: "th:9988", text: "Правило 2" }] } });
+    const ids = [r1, r2].map((r) => `'${r.data.results[0].postId}'`).join(",");
+    const rows = s.sql(`SELECT due_at FROM direct_posts WHERE id IN (${ids}) ORDER BY due_at`);
+    for (const { due_at } of rows) {
+      const d = new Date(due_at + 4 * 3600000);
+      const weekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+      const h = d.getUTCHours();
+      assert.ok(h >= (weekend ? 10 : 18) && h <= 22, `час ${h} в ${weekend ? "выходной" : "будний"}`);
+    }
+    assert.ok(rows[1].due_at - rows[0].due_at >= ((7 * 86400000) / 3) * 0.85, "посты одной соцсети — не чаще 3 в неделю");
+    s.sql(`DELETE FROM direct_posts WHERE id IN (${ids})`);
+  });
+
+  test("соцсеть без постов 7 дней — напоминание раз в неделю", async () => {
+    s.sql("UPDATE direct_posts SET sent_at = sent_at - 10 * 86400000 WHERE account_id = 'th:9988' AND status = 'sent'");
+    const before = messages().length;
+    await s.tick("0 3 * * *");
+    const m = messages().slice(before).find((x) => /Давно не было постов/.test(x.text));
+    assert.ok(m, "напоминание пришло");
+    assert.match(m.text, /Threads/);
+    assert.doesNotMatch(m.text, /Facebook AirFixer/, "где посты были недавно — не тревожим");
+    await s.tick("0 3 * * *");
+    assert.equal(messages().slice(before).filter((x) => /Давно не было постов/.test(x.text)).length, 1, "второй раз на этой неделе — нет");
+  });
+});
+
 describe("перебор пароля", () => {
   test("после 8 ошибок — блокировка (429)", async () => {
     let last = 0;

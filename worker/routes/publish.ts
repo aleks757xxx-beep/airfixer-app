@@ -55,6 +55,22 @@ const needKey: MiddlewareHandler<AppBindings> = async (c, next) => {
   await next();
 };
 
+/** Соцсеть канала (instagram, tiktok…) — для нормы постов в неделю. */
+async function channelServices(c: Ctx): Promise<Map<string, string>> {
+  const accounts = await listAccounts(c.env.DB);
+  const key = apiKey(c);
+  const buffer = key ? await listChannels(key, c.env.DB).catch(() => []) : [];
+  return new Map([...accounts.map((a) => [a.id, a.service] as const), ...buffer.map((b) => [b.id, b.service] as const)]);
+}
+/** Занятое время каналов Buffer: запланированные и вышедшие за последние 8 дней. */
+async function bufferBusy(key: string, db: D1Database, now: number): Promise<Array<{ channelId: string; t: number }>> {
+  const r = await listPosts(key, db, now - 8 * 86_400_000, now + 50 * 86_400_000).catch(() => ({ items: [], drafts: [] }));
+  return r.items
+    .filter((p) => p.status === "scheduled" || p.status === "sent" || p.status === "sending")
+    .map((p) => ({ channelId: p.channelId, t: (p.sentAt ?? p.dueAt) as number }))
+    .filter((p) => typeof p.t === "number");
+}
+
 /** «В очередь» в несколько соцсетей: по одной соцсети в день, сначала где больше просмотров (решение владельца 09.11.2026). */
 async function composeSpread(
   c: Ctx,
@@ -67,15 +83,15 @@ async function composeSpread(
 ): Promise<ComposeResult> {
   const now = Date.now();
   const key = apiKey(c);
-  const directBusy = await c.env.DB.prepare("SELECT account_id, due_at FROM direct_posts WHERE status IN ('scheduled','processing') AND due_at > ?")
-    .bind(now - 3 * 3_600_000)
-    .all<{ account_id: string; due_at: number }>();
-  const planned = key && bufferTargets.length ? await listPosts(key, c.env.DB, now - 3 * 3_600_000, now + 40 * 86_400_000).catch(() => ({ items: [], drafts: [] })) : { items: [], drafts: [] };
-  const busyOf = (ch: string) => [
-    ...directBusy.results.filter((r) => r.account_id === ch).map((r) => r.due_at),
-    ...planned.items.filter((p) => p.channelId === ch && p.status === "scheduled" && p.dueAt).map((p) => p.dueAt as number),
-  ];
-  const slots = await spreadSlots(c.env.DB, input.targets.map((t) => t.channelId), busyOf, now);
+  const directBusy = await c.env.DB.prepare(
+    "SELECT account_id, COALESCE(sent_at, due_at) AS t FROM direct_posts WHERE status IN ('scheduled','processing','sent') AND COALESCE(sent_at, due_at) > ?",
+  )
+    .bind(now - 8 * 86_400_000)
+    .all<{ account_id: string; t: number }>();
+  const planned = key && bufferTargets.length ? await bufferBusy(key, c.env.DB, now) : [];
+  const busyOf = (ch: string) => [...directBusy.results.filter((r) => r.account_id === ch).map((r) => r.t), ...planned.filter((p) => p.channelId === ch).map((p) => p.t)];
+  const services = await channelServices(c);
+  const slots = await spreadSlots(c.env.DB, input.targets.map((t) => ({ id: t.channelId, service: services.get(t.channelId) ?? "" })), busyOf, now);
   const results: ComposeResult["results"] = [];
   for (const t of directTargets) {
     const at = slots.get(t.channelId);
@@ -147,10 +163,11 @@ function build(author: "owner" | "claude") {
           else if (parsed.data.mode === "queue") {
             // «В очередь» для TikTok / Google — тоже в лучший час (свободный от других постов канала); нет данных — очередь Buffer
             const now = Date.now();
-            const planned = await listPosts(key, c.env.DB, now - 3 * 3_600_000, now + 8 * 86_400_000).catch(() => ({ items: [], drafts: [] }));
+            const planned = await bufferBusy(key, c.env.DB, now);
+            const services = await channelServices(c);
             for (const t of bufferTargets) {
-              const busy = planned.items.filter((p) => p.channelId === t.channelId && p.status === "scheduled" && p.dueAt).map((p) => p.dueAt as number);
-              const at = await bestSlot(c.env.DB, t.channelId, busy, await isExploreTurn(c.env.DB, t.channelId));
+              const busy = planned.filter((p) => p.channelId === t.channelId).map((p) => p.t);
+              const at = await bestSlot(c.env.DB, t.channelId, services.get(t.channelId) ?? "", busy, await isExploreTurn(c.env.DB, t.channelId));
               const one = at ? { ...parsed.data, mode: "schedule" as const, dueAt: at, targets: [t] } : { ...parsed.data, targets: [t] };
               results.push(...(await createPosts(key, c.env.DB, one, videoUrl, author)).results);
             }

@@ -30,6 +30,9 @@ export function Reposts() {
       <p className="type-body-s mt-1 text-on-surface-variant">
         Ролики с галочкой «можно повторять». В соцсеть, где ролика не было, — сразу; где был — через {q.data?.gapDays ?? 90} дней. Сверху — самые удачные.
       </p>
+      <p className="type-body-s mt-1 font-semibold text-warning">
+        Перед повтором смените подпись и начало ролика (первые секунды) — иначе Instagram сочтёт его копией и не покажет новым людям.
+      </p>
       <ul className="mt-3 divide-y divide-outline-variant">
         {items.map((it) => (
           <li key={it.media.id} className="flex gap-3 py-3">

@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TEXT_LIMITS, TG_MAX_BYTES, textLength, type Channel, type ComposeInput, type ComposeResult, type GoogleButton, type MediaItem, type ShareMode } from "../../../shared/schemas";
 import { useMediaList } from "../../api/media";
 import { useChannels, useCompose, useSnippets } from "../../api/publish";
+import { RulesArticle } from "../rules/RulesArticle";
 import { SnippetsDialog } from "./SnippetsDialog";
 import { dayKey, fromTb } from "../../lib/time";
 import { ServiceBadge, channelLabel } from "./channels";
 
 const MODES: ReadonlyArray<{ mode: ShareMode; label: string; button: string; hint: string }> = [
-  { mode: "queue", label: "В очередь", button: "Добавить в очередь", hint: "В лучший час каждой соцсети; несколько соцсетей — по одной раз в 3 дня, сначала где больше просмотров" },
+  { mode: "queue", label: "В очередь", button: "Добавить в очередь", hint: "По правилам публикации: в часы, когда вы можете ответить, не чаще нормы соцсети; несколько соцсетей — по одной раз в 3 дня" },
   { mode: "next", label: "Следующим", button: "Поставить следующим", hint: "Первым в очереди — выйдет в ближайший слот" },
   { mode: "schedule", label: "На время", button: "Запланировать", hint: "Точная дата и время (Тбилиси)" },
   { mode: "now", label: "Сейчас", button: "Опубликовать сейчас", hint: "Выйдет сразу" },
@@ -53,6 +54,7 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
   const [tab, setTab] = useState<string>("all");
   const [title, setTitle] = useState(preset?.title ?? (media ? titleFrom(media.name) : ""));
   const [mode, setMode] = useState<ShareMode>(presetDate ? "schedule" : "queue");
+  const [showRules, setShowRules] = useState(false);
   const [date, setDate] = useState(presetDate ?? dayKey(Date.now() + 86_400_000));
   const [time, setTime] = useState("19:00");
   const [result, setResult] = useState<ComposeResult | null>(null);
@@ -118,15 +120,23 @@ export function ComposeDialog({ media, presetDate, preset, onClose }: Props) {
       <div className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-surface-container md:max-h-[92vh] md:rounded-m3xl">
         <header className="flex items-center gap-3 border-b border-outline-variant px-4 py-3">
           <h2 className="text-lg font-bold">Новый пост</h2>
-          <button type="button" onClick={onClose} className="ml-auto rounded-full px-3 py-1 text-on-surface-variant hover:bg-surface-container-highest" aria-label="Закрыть">
+          <button type="button" onClick={() => setShowRules((v) => !v)} className="ml-auto rounded-full px-3 py-1 text-sm font-semibold text-primary hover:bg-surface-container-highest">
+            {showRules ? "← К посту" : "Правила"}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-full px-3 py-1 text-on-surface-variant hover:bg-surface-container-highest" aria-label="Закрыть">
             ✕
           </button>
         </header>
+        {showRules ? (
+          <div className="overflow-y-auto p-4">
+            <RulesArticle />
+          </div>
+        ) : null}
 
-        {result ? (
+        {showRules ? null : result ? (
           <div className="space-y-3 overflow-y-auto p-4">
             <p className="font-semibold">
-              {result.results.every((r) => r.ok) ? "Готово ✓ Посты отправлены в Buffer" : "Часть постов не прошла — смотрите ниже"}
+              {result.results.every((r) => r.ok) ? "Готово ✓ Посты поставлены в расписание" : "Часть постов не прошла — смотрите ниже"}
             </p>
             <ul className="space-y-2">
               {result.results.map((r) => {

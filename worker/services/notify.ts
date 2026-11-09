@@ -2,6 +2,7 @@ import type { Env } from "../env";
 import { open } from "../lib/secretbox";
 import { MetaError, metaObject } from "./meta";
 import { listChannels, listPosts } from "./publish";
+import { RULES } from "../../shared/rules";
 import { TelegramError, chatByAddress, sendMessage } from "./telegram";
 import { ThreadsError, threadsMe } from "./threads";
 import { YoutubeError, googleClientId, refreshGoogleToken } from "./youtube";
@@ -22,7 +23,7 @@ const SERVICE: Record<string, string> = {
   tiktok: "TikTok",
   googlebusiness: "Google Бизнес",
 };
-export const NOTIFY_KINDS = ["failed", "sent", "connection", "claude"] as const;
+export const NOTIFY_KINDS = ["failed", "sent", "connection", "claude", "idle"] as const;
 export type NotifyKind = (typeof NOTIFY_KINDS)[number];
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -207,4 +208,49 @@ export async function checkConnections(env: Env): Promise<string[]> {
   }
   await env.DB.prepare("DELETE FROM notify_log WHERE at > 0 AND at < ?").bind(Date.now() - 60 * 86_400_000).run();
   return broken;
+}
+
+/**
+ * Правила публикации: соцсеть без постов RULES.idleDays дней и ничего не запланировано на ближайшие сутки — напомнить
+ * (неделя без постов снижает охват). Одним сообщением, про каждую соцсеть — не чаще раза в неделю.
+ */
+export async function checkIdle(env: Env, now = Date.now()): Promise<string[]> {
+  const idleMs = RULES.idleDays * 86_400_000;
+  const channels: Array<{ id: string; label: string; last: number | null; next: number | null }> = [];
+  const accounts = await env.DB.prepare(
+    `SELECT a.id, a.service, a.name, a.replaces,
+       (SELECT MAX(sent_at) FROM direct_posts p WHERE p.account_id = a.id AND p.status = 'sent') AS last,
+       (SELECT MIN(due_at) FROM direct_posts p WHERE p.account_id = a.id AND p.status IN ('scheduled','processing') AND p.due_at > ?) AS next
+     FROM direct_accounts a`,
+  )
+    .bind(now)
+    .all<{ id: string; service: string; name: string; replaces: string | null; last: number | null; next: number | null }>();
+  for (const a of accounts.results) channels.push({ id: a.id, label: `${SERVICE[a.service] ?? a.service} ${esc(a.name)}`, last: a.last, next: a.next });
+  const key = env.BUFFER_API_KEY?.trim();
+  if (key) {
+    const replaced = new Set(accounts.results.map((a) => a.replaces).filter((x): x is string => !!x));
+    const list = (await listChannels(key, env.DB).catch(() => [])).filter((c) => !replaced.has(c.id) && !c.isDisconnected);
+    const posts = list.length ? await listPosts(key, env.DB, now - idleMs - 86_400_000, now + 30 * 86_400_000).catch(() => ({ items: [], drafts: [] })) : { items: [], drafts: [] };
+    for (const c of list) {
+      const mine = posts.items.filter((p) => p.channelId === c.id);
+      const sent = mine.filter((p) => p.status === "sent").map((p) => p.sentAt ?? p.dueAt ?? 0);
+      const planned = mine.filter((p) => (p.status === "scheduled" || p.status === "sending") && p.dueAt).map((p) => p.dueAt as number);
+      channels.push({ id: c.id, label: `${SERVICE[c.service] ?? c.service} ${esc(c.displayName || c.name)}`, last: sent.length ? Math.max(...sent) : null, next: planned.length ? Math.min(...planned) : null });
+    }
+  }
+  const idle = channels.filter((c) => (c.last === null || now - c.last >= idleMs) && (c.next === null || c.next - now > 86_400_000));
+  const week = Math.floor(now / (7 * 86_400_000));
+  const fresh: typeof idle = [];
+  for (const c of idle) if (await once(env.DB, `idle:${c.id}:${week}`)) fresh.push(c);
+  if (fresh.length) {
+    const days = (t: number | null) => (t === null ? "давно" : `${Math.floor((now - t) / 86_400_000)} дн.`);
+    const lines = fresh.map((c) => `• ${c.label} — без постов ${days(c.last)}${c.next ? `, следующий через ${Math.ceil((c.next - now) / 86_400_000)} дн.` : ""}`);
+    await notify(
+      env,
+      "idle",
+      `📭 <b>Давно не было постов</b>\n${lines.join("\n")}\nНеделя без постов снижает охват. Поставьте новый ролик или повтор из «Можно повторить».`,
+      { text: "Открыть «Библиотеку»", url: `${APP}/#/library` },
+    );
+  }
+  return idle.map((c) => c.id);
 }

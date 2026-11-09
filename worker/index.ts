@@ -20,7 +20,7 @@ import { connect, connectCallback } from "./routes/connect";
 import { collectDirectMetrics, processDirectQueue, refreshThreadsTokens } from "./services/direct";
 import { archiveBufferHistory } from "./services/history";
 import { seal } from "./lib/secretbox";
-import { checkConnections, notifyBufferPosts, notifyClaudeWork, notifyDirectPosts } from "./services/notify";
+import { checkConnections, checkIdle, notifyBufferPosts, notifyClaudeWork, notifyDirectPosts } from "./services/notify";
 
 /**
  * PostFixer (app.airfixer.ge)
@@ -117,6 +117,9 @@ export default {
     if (refreshed) console.log("threads: tokens refreshed", refreshed);
     const broken = await checkConnections(env).catch((e: unknown) => (console.error("check connections", e), []));
     if (broken.length) console.log("connections broken", broken.join("; "));
+    // правила публикации: соцсеть без постов 7 дней — напоминание
+    const idle = await checkIdle(env).catch((e: unknown) => (console.error("idle check", e), []));
+    if (idle.length) console.log("idle channels", idle.join("; "));
     // копия свежих постов Buffer с цифрами (Buffer стирает историю при отключении канала)
     const key = env.BUFFER_API_KEY?.trim();
     if (key) {

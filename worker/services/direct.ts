@@ -313,11 +313,12 @@ export async function createDirectPosts(
       // «В очередь» — в лучший час по цифрам (каждый 5-й — пробный); «Следующим» и без данных — по слотам
       let best: number | null = null;
       if (input.mode === "queue") {
+        // занятое время соцсети: запланированные и вышедшие за последние 8 дней (норма постов в неделю)
         const busy = await db
-          .prepare("SELECT due_at FROM direct_posts WHERE account_id = ? AND status IN ('scheduled','processing') AND due_at > ?")
-          .bind(a.id, Date.now() - 3 * 3_600_000)
-          .all<{ due_at: number }>();
-        best = await bestSlot(db, a.id, [...busy.results.map((r) => r.due_at), ...taken], await isExploreTurn(db, a.id));
+          .prepare("SELECT COALESCE(sent_at, due_at) AS t FROM direct_posts WHERE account_id = ? AND status IN ('scheduled','processing','sent') AND COALESCE(sent_at, due_at) > ?")
+          .bind(a.id, Date.now() - 8 * 86_400_000)
+          .all<{ t: number }>();
+        best = await bestSlot(db, a.id, a.service, [...busy.results.map((r) => r.t), ...taken], await isExploreTurn(db, a.id));
       }
       due = best ?? (await nextSlot(db, a, taken));
       takenByAccount.set(a.id, [...taken, due]);

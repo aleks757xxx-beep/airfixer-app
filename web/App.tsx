@@ -2,6 +2,7 @@ import { NAV, TITLES, useRoute, type Route } from "./router";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ConnectionsPage } from "./features/connections/ConnectionsPage";
 import { SettingsPage } from "./features/status/StatusPage";
+import { RulesPage } from "./features/rules/RulesArticle";
 import { LibraryPage } from "./features/library/LibraryPage";
 import { CalendarPage } from "./features/publish/CalendarPage";
 import { PostsPage } from "./features/publish/PostsPage";
@@ -25,6 +26,8 @@ function Screen({ route }: { route: Route }) {
       return <ConnectionsPage />;
     case "settings":
       return <SettingsPage />;
+    case "rules":
+      return <RulesPage />;
   }
 }
 

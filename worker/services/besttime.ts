@@ -1,4 +1,5 @@
 import { StatPostSchema, TBILISI_OFFSET_MS, type BestTimes } from "../../shared/schemas";
+import { RULES, allowedHours, cadenceGapMs } from "../../shared/rules";
 
 /**
  * «Лучшее время» (решение владельца 08.11.2026): по просмотрам за первые 24 часа, отдельно по каждой соцсети,
@@ -14,7 +15,7 @@ export const HOUR_TO = 22; // последний разрешённый час (
 const HOURS = HOUR_TO - HOUR_FROM + 1;
 const MIN_SAMPLES = 6; // меньше — канал считаем по общему профилю
 const SHRINK = 3; // «вес» общего профиля при сглаживании
-const GAP_MS = 3 * 3_600_000; // посты одного канала — не чаще раза в 3 часа
+const GAP_MS = RULES.sameChannelGapHours * 3_600_000; // посты одного канала — не чаще раза в 3 часа
 const HORIZON_DAYS = 7;
 const SOON_BONUS = 0.97; // чем позже день, тем чуть хуже — чтобы не откладывать на неделю ради +3 %
 
@@ -150,14 +151,23 @@ export async function bestTimes(db: D1Database, channels: ReadonlyArray<{ id: st
   return { hourFrom: HOUR_FROM, hourTo: HOUR_TO, items };
 }
 
+/** Можно ли ставить пост соцсети на это время: часы для ответов, 3 ч до других её постов, норма в неделю. */
+function slotOk(at: number, service: string, busy: ReadonlyArray<number>): boolean {
+  const gap = cadenceGapMs(service);
+  return busy.every((b) => Math.abs(b - at) >= Math.max(GAP_MS, gap));
+}
+/** Часы дня по правилам (будни 18–22, выходные 10–22). */
+const hoursOf = (dayStartMs: number) => allowedHours(local(dayStartMs).getUTCDay());
+
 /**
- * Время для «В очередь»: лучший свободный час в ближайшую неделю (8:00–22:00, не ближе 3 ч к другим постам канала).
- * explore — пробный пост: час, где постов было меньше всего (в ближайшие 3 дня).
- * null — данных нет, пусть работает обычное расписание слотов.
+ * Время для «В очередь» в одну соцсеть: лучший разрешённый час (правила публикации: часы для ответов на комментарии,
+ * норма постов соцсети в неделю, не ближе 3 ч к её постам) в ближайшие дни.
+ * explore — пробный пост: час, где постов было меньше всего. null — данных нет, пусть работает обычное расписание слотов.
  */
 export async function bestSlot(
   db: D1Database,
   channelId: string,
+  service: string,
   busy: ReadonlyArray<number>,
   explore: boolean,
   now = Date.now(),
@@ -167,18 +177,24 @@ export async function bestSlot(
   if (!p) return null;
   const start = now + 15 * 60_000;
   const dayStart = Date.UTC(local(now).getUTCFullYear(), local(now).getUTCMonth(), local(now).getUTCDate()) - TBILISI_OFFSET_MS;
-  let best: { at: number; v: number } | null = null;
-  for (let day = 0; day < (explore ? 3 : HORIZON_DAYS); day++) {
-    for (let h = HOUR_FROM; h <= HOUR_TO; h++) {
-      const at = dayStart + day * 86_400_000 + h * 3_600_000;
-      if (at < start || busy.some((b) => Math.abs(b - at) < GAP_MS)) continue;
-      const d = dayOf(at);
-      // пробный: меньше всего данных; при равенстве — раньше
-      const v = explore ? -(p.count[d]?.[h] ?? 0) - day * 0.001 : score(p, d, h) * SOON_BONUS ** day;
-      if (!best || v > best.v) best = { at, v };
+  // обычно хватает недели; если норма соцсети занята — ищем дальше
+  for (const horizon of [explore ? 3 : HORIZON_DAYS, 30]) {
+    let best: { at: number; v: number } | null = null;
+    for (let day = 0; day < horizon; day++) {
+      const ds = dayStart + day * 86_400_000;
+      const [from, to] = hoursOf(ds);
+      for (let h = from; h <= to; h++) {
+        const at = ds + h * 3_600_000;
+        if (at < start || !slotOk(at, service, busy)) continue;
+        const d = dayOf(at);
+        // пробный: меньше всего данных; при равенстве — раньше
+        const v = explore ? -(p.count[d]?.[h] ?? 0) - day * 0.001 : score(p, d, h) * SOON_BONUS ** day;
+        if (!best || v > best.v) best = { at, v };
+      }
     }
+    if (best) return best.at;
   }
-  return best?.at ?? null;
+  return null;
 }
 
 /** Каждый 5-й пост канала — пробный (для каналов Buffer счёта постов у нас нет — с вероятностью 1/5). */
@@ -198,41 +214,41 @@ async function reach(db: D1Database): Promise<Map<string, number>> {
   return new Map([...out].map(([k, v]) => [k, v.w ? v.s / v.w : 0]));
 }
 
-/** Шаг между соцсетями одного ролика: 7 соцсетей растягиваются примерно на 3 недели (решение владельца 09.11.2026). */
-export const SPREAD_DAYS = 3;
-
 /**
- * «В очередь» в несколько соцсетей (решение владельца 09.11.2026): один ролик — по одной соцсети раз в SPREAD_DAYS дней,
- * чтобы человек, подписанный на несколько, не видел его везде сразу. Порядок — сначала где больше просмотров,
- * время — лучший час соцсети в её день (8:00–22:00, не ближе 3 ч к другим её постам).
+ * «В очередь» в несколько соцсетей (правила публикации, решение владельца 09.11.2026):
+ * один ролик — в следующую соцсеть не раньше чем через RULES.spreadDays дней (7 соцсетей ≈ 3 недели), чтобы не быть назойливыми;
+ * порядок — сначала где больше просмотров; в каждой соцсети — не чаще её нормы в неделю (Google — раз в неделю),
+ * время — лучший час в часы для ответов на комментарии (будни 18–22, выходные 10–22).
  */
 export async function spreadSlots(
   db: D1Database,
-  channelIds: ReadonlyArray<string>,
+  channels: ReadonlyArray<{ id: string; service: string }>,
   busyOf: (channelId: string) => ReadonlyArray<number>,
   now = Date.now(),
 ): Promise<Map<string, number>> {
   const { global, byChannel } = await profiles(db);
   const views = await reach(db);
-  const order = [...channelIds].sort((a, b) => (views.get(b) ?? -1) - (views.get(a) ?? -1));
+  const order = [...channels].sort((a, b) => (views.get(b.id) ?? -1) - (views.get(a.id) ?? -1));
   const start = now + 15 * 60_000;
   const dayStart = Date.UTC(local(now).getUTCFullYear(), local(now).getUTCMonth(), local(now).getUTCDate()) - TBILISI_OFFSET_MS;
   const out = new Map<string, number>();
   let day = 0;
   for (const ch of order) {
-    const p = byChannel.get(ch) ?? (global.samples >= MIN_SAMPLES ? global : null);
-    const busy = busyOf(ch);
-    for (let tries = 0; tries < 30; tries++, day++) {
+    const p = byChannel.get(ch.id) ?? (global.samples >= MIN_SAMPLES ? global : null);
+    const busy = busyOf(ch.id);
+    for (let d = day; d < day + 60; d++) {
+      const ds = dayStart + d * 86_400_000;
+      const [from, to] = hoursOf(ds);
       let best: { at: number; v: number } | null = null;
-      for (let h = HOUR_FROM; h <= HOUR_TO; h++) {
-        const at = dayStart + day * 86_400_000 + h * 3_600_000;
-        if (at < start || busy.some((b) => Math.abs(b - at) < GAP_MS)) continue;
-        const v = p ? score(p, dayOf(at), h) : -Math.abs(h - 12); // нет данных — ближе к полудню
+      for (let h = from; h <= to; h++) {
+        const at = ds + h * 3_600_000;
+        if (at < start || !slotOk(at, ch.service, busy)) continue;
+        const v = p ? score(p, dayOf(at), h) : -Math.abs(h - 19); // нет данных — ближе к 19:00
         if (!best || v > best.v) best = { at, v };
       }
       if (best) {
-        out.set(ch, best.at);
-        day += SPREAD_DAYS;
+        out.set(ch.id, best.at);
+        day = d + RULES.spreadDays;
         break;
       }
     }

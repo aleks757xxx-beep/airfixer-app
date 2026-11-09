@@ -172,6 +172,7 @@ const NOTIFY: ReadonlyArray<{ kind: string; label: string; supporting: string }>
   { kind: "connection", label: "Подключение сломалось", supporting: "Соцсеть отозвала доступ — нужно войти заново (проверка раз в сутки)" },
   { kind: "sent", label: "Пост вышел", supporting: "Короткое сообщение со ссылкой на пост" },
   { kind: "claude", label: "Claude выполнил задание", supporting: "Ответ на задание у ролика, готовый монтаж по заказу" },
+  { kind: "idle", label: "Давно не было постов", supporting: "В соцсети 7 дней без постов и ничего не запланировано (раз в неделю)" },
 ];
 function NotifySettings() {
   const q = useSettings();
@@ -233,6 +234,12 @@ export function SettingsPage() {
         <PhoneCode />
         <Passkeys />
       </div>
+      <SectionTitle>Публикация</SectionTitle>
+      <a href="#/rules" className="block">
+        <M3Card className="p-1">
+          <ListItem leading={<Icon name="article" />} headline="Правила публикации" supporting="Как часто, когда и куда выкладывать — по исследованиям. По ним работает «В очередь»" trailing={<span className="text-on-surface-variant">›</span>} />
+        </M3Card>
+      </a>
       <SectionTitle>Уведомления</SectionTitle>
       <NotifySettings />
       <SectionTitle>Claude</SectionTitle>

@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import type { IconName } from "./components/m3/icons";
 
 /** Простой роутер по #/путь — без лишних библиотек. */
-export type Route = "calendar" | "library" | "posts" | "stats" | "connections" | "settings";
+export type Route = "calendar" | "library" | "posts" | "stats" | "connections" | "settings" | "rules";
 
-const ROUTES: ReadonlyArray<Route> = ["calendar", "library", "posts", "stats", "connections", "settings"];
+const ROUTES: ReadonlyArray<Route> = ["calendar", "library", "posts", "stats", "connections", "settings", "rules"];
 
 function parse(hash: string): Route {
   const [path = "", query = ""] = hash.replace(/^#\/?/, "").split("?");
@@ -39,4 +39,5 @@ export const TITLES: Record<Route, string> = {
   stats: "Статистика",
   connections: "Подключения",
   settings: "Настройки",
+  rules: "Правила публикации",
 };
