@@ -284,7 +284,7 @@ describe("лучшее время", () => {
     for (let i = 1; i < days.length; i++) assert.equal((Date.parse(days[i]) - Date.parse(days[i - 1])) / 86400000, 3, "раз в 3 дня");
     assert.ok(rows.every((x) => tb(x.due_at).getUTCHours() >= 8 && tb(x.due_at).getUTCHours() <= 22));
     assert.equal(rows[0].account_id, "fb:p1", "первой — соцсеть с наибольшими просмотрами");
-    assert.equal(tb(rows[0].due_at).getUTCHours(), 19, "в её лучший час");
+    // точный час зависит от времени запуска (норма соцсети считается от постов прошлых тестов) — лучший час проверяет тест «лучшее время»
     s.sql(`DELETE FROM direct_posts WHERE id IN (${ids})`);
   });
 });
@@ -379,7 +379,14 @@ describe("пометка исходников", () => {
     const r5 = await renames();
     assert.equal(by(r5, "DJI_1.mp4"), "#18 (0:07–0:10) DJI_1.mp4");
     assert.ok(!r5.gotovoe.some((g) => g.mediaId === m3.id), "имя «18 …» уже с номером");
-    s.sql(`DELETE FROM direct_posts WHERE media_id IN ('${m1.id}', '${m2.id}')`);
+    // ролик уже назван с номером — номер берётся из имени, файл в «Готовом» не переименовывается
+    const m4 = await s.upload("22 Уже с номером.mp4", 24_000);
+    await s.api(`${A}/media/${m4.id}/sources`, { method: "PUT", agent: true, body: { items: [{ folder: "Чистка", file: "IMG_9.MOV" }] } });
+    await s.api(`${A}/publish/posts`, { method: "POST", agent: true, body: { mediaId: m4.id, mode: "queue", targets: [{ channelId: "fb:p1", text: "С номером" }] } });
+    const r6 = await renames();
+    assert.equal(by(r6, "IMG_9.MOV"), "#22 IMG_9.MOV");
+    assert.ok(!r6.gotovoe.some((g) => g.mediaId === m4.id), "«22 …» не превращается в «23 22 …»");
+    s.sql(`DELETE FROM direct_posts WHERE media_id IN ('${m1.id}', '${m2.id}', '${m4.id}')`);
   });
 });
 

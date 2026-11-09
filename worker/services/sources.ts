@@ -43,14 +43,26 @@ async function scheduled(db: D1Database): Promise<Map<string, number>> {
 
 /** Дать номера запланированным монтажам без номера — по порядку, в котором их запланировали. */
 async function assignNumbers(db: D1Database, plan: Map<string, number>, gotovoeMax: number): Promise<void> {
-  const montages = (await db.prepare("SELECT DISTINCT s.media_id AS id, m.number FROM media_sources s JOIN media m ON m.id = s.media_id").all<{ id: string; number: number | null }>()).results;
+  const montages = (
+    await db.prepare("SELECT DISTINCT s.media_id AS id, m.number, m.name FROM media_sources s JOIN media m ON m.id = s.media_id").all<{ id: string; number: number | null; name: string }>()
+  ).results;
   const todo = montages.filter((m) => m.number === null && plan.has(m.id)).sort((a, b) => (plan.get(a.id) ?? 0) - (plan.get(b.id) ?? 0));
   if (!todo.length) return;
-  const maxNum = (await db.prepare("SELECT MAX(number) AS n FROM media").first<{ n: number | null }>())?.n ?? 0;
+  const lead = (name: string) => Number(/^(\d+)[ .]/.exec(name)?.[1] ?? 0);
+  const taken = new Set((await db.prepare("SELECT number FROM media WHERE number IS NOT NULL").all<{ number: number }>()).results.map((x) => x.number));
+  const left: typeof todo = [];
+  for (const m of todo) {
+    // ролик уже назван с номером («19 Мойка в клубе.mp4») — этот номер и берём, если он свободен
+    const n = lead(m.name);
+    if (n > 0 && !taken.has(n)) {
+      await db.prepare("UPDATE media SET number = ? WHERE id = ? AND number IS NULL").bind(n, m.id).run();
+      taken.add(n);
+    } else left.push(m);
+  }
+  if (!left.length) return;
   const names = (await db.prepare("SELECT name FROM media WHERE source = 'gotovoe'").all<{ name: string }>()).results;
-  const fromNames = Math.max(0, ...names.map((x) => Number(/^(\d+)[ .]/.exec(x.name)?.[1] ?? 0)));
-  let next = Math.max(maxNum, fromNames, gotovoeMax) + 1;
-  for (const m of todo) await db.prepare("UPDATE media SET number = ? WHERE id = ? AND number IS NULL").bind(next++, m.id).run();
+  let next = Math.max(0, ...taken, ...names.map((x) => lead(x.name)), gotovoeMax) + 1;
+  for (const m of left) await db.prepare("UPDATE media SET number = ? WHERE id = ? AND number IS NULL").bind(next++, m.id).run();
 }
 
 interface SourceRow {
