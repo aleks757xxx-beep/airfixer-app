@@ -451,6 +451,23 @@ describe("правила публикации", () => {
   });
 });
 
+describe("резервная копия", () => {
+  test("все данные одним файлом, без сессий, кодов входа и токенов соцсетей", async () => {
+    const r = await s.api("/api/v2/ingest/agent/backup", { agent: true });
+    assert.equal(r.status, 200);
+    const t = r.data.tables;
+    assert.equal(r.data.app, "postfixer");
+    assert.ok(t.media.length > 0 && Array.isArray(t.direct_posts) && t.direct_accounts.length > 0);
+    for (const n of ["sessions", "auth_settings", "trusted_devices", "passkeys", "agent_tokens", "oauth_states"]) assert.ok(!(n in t), `нет ${n}`);
+    assert.ok(t.direct_accounts.every((a) => !("token_enc" in a)), "токены соцсетей не попадают");
+    const raw = JSON.stringify(r.data);
+    assert.ok(!raw.includes("broken-token") && !raw.includes(THREADS_SECRET));
+    const d = await s.api("/api/v2/settings/backup", { cookie });
+    assert.equal(d.status, 200);
+    assert.equal((await s.api("/api/v2/settings/backup", {})).status, 401, "без входа — нельзя");
+  });
+});
+
 describe("перебор пароля", () => {
   test("после 8 ошибок — блокировка (429)", async () => {
     let last = 0;

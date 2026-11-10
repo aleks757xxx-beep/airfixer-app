@@ -4,6 +4,7 @@ import { DEFAULT_CLAUDE_URL, DEFAULT_TG_BUTTON, NotifyInputSchema, SettingsInput
 import { notify, notifyConfig } from "../services/notify";
 import { ensureMigrated } from "../lib/migrate";
 import { audit } from "../middleware/auth";
+import { backupFileName, exportBackup } from "../services/backup";
 
 const KEYS = { claudeUrl: "claude_url", tgButtonText: "tg_button_text", tgButtonUrl: "tg_button_url" } as const;
 
@@ -30,6 +31,14 @@ export const settings = new Hono<AppBindings>()
       notify: { connected: !!cfg.chatId && !!c.env.TG_BOT_TOKEN?.trim(), off: Object.entries(cfg.kinds).filter(([, on]) => !on).map(([k]) => k) },
     };
     return c.json(body);
+  })
+  // Резервная копия данных (без секретов) — скачать файлом
+  .get("/backup", async (c) => {
+    const b = await exportBackup(c.env.DB);
+    await audit(c.env.DB, "backup download");
+    return new Response(JSON.stringify(b), {
+      headers: { "content-type": "application/json; charset=utf-8", "content-disposition": `attachment; filename="${backupFileName(b.exportedAt)}"`, "cache-control": "no-store" },
+    });
   })
   // Какие уведомления присылать
   .put("/notify", async (c) => {

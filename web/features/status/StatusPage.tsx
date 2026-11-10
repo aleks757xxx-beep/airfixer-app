@@ -240,6 +240,12 @@ export function SettingsPage() {
           <ListItem leading={<Icon name="article" />} headline="Правила публикации" supporting="Как часто, когда и куда выкладывать — по исследованиям. По ним работает «В очередь»" trailing={<span className="text-on-surface-variant">›</span>} />
         </M3Card>
       </a>
+      <SectionTitle>Резервная копия</SectionTitle>
+      <a href="/api/v2/settings/backup" download className="block">
+        <M3Card className="p-1">
+          <ListItem leading={<Icon name="database" />} headline="Скачать копию данных" supporting="Ролики в библиотеке, посты, статистика, заказы, настройки — одним файлом. Без паролей и токенов" trailing={<span className="text-on-surface-variant">›</span>} />
+        </M3Card>
+      </a>
       <SectionTitle>Уведомления</SectionTitle>
       <NotifySettings />
       <SectionTitle>Claude</SectionTitle>

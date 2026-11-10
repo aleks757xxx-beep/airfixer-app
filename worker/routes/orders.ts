@@ -1,3 +1,4 @@
+import { exportBackup } from "../services/backup";
 import { z } from "zod";
 import { connectAgent } from "./connect";
 import { Hono, type Context } from "hono";
@@ -175,6 +176,8 @@ export const ordersAgent = new Hono<AppBindings>()
   .use("*", uploadToken)
   .use("*", migrated)
   .route("/connect", connectAgent)
+  // Для Claude: резервная копия данных (без секретов) — кладётся в папку бэкапов на Mac
+  .get("/backup", async (c) => c.json(await exportBackup(c.env.DB)))
   // Для Claude: журнал действий (входы, публикации) — разбирать проблемы. Только чтение, без IP.
   .get("/audit", async (c) => {
     const limit = Math.min(Math.max(Number(c.req.query("limit")) || 40, 1), 200);
