@@ -13,6 +13,7 @@ import {
   type MediaSource,
   type NoteStatus,
   type TaskList,
+  type TrashList,
   type UploadPart,
   type UploadResult,
   type UploadStart,
@@ -20,6 +21,7 @@ import {
 import { audit } from "../middleware/auth";
 import { safeEqual } from "../lib/crypto";
 import { ensureMigrated } from "../lib/migrate";
+import { TRASH_DAYS, autoTrash, hardDelete, hasScheduled } from "../services/trash";
 
 const FREE_R2_BYTES = 10 * 1024 ** 3; // 10 ГБ бесплатно
 const UPLOAD_TTL_MS = 24 * 3600 * 1000; // незавершённая загрузка живёт сутки
@@ -40,6 +42,8 @@ export interface MediaRow {
   repostable?: number | null;
   number?: number | null;
   review_drafts?: number | null;
+  trashed_at?: number | null;
+  trash_reason?: string | null;
   review_open?: number | null;
 }
 interface UploadRow {
@@ -69,10 +73,12 @@ export const toItem = (r: MediaRow): MediaItem => ({
   tgSize: r.tg_size ?? null,
   repostable: r.repostable === 1,
   number: r.number ?? null,
+  trashedAt: r.trashed_at ?? null,
+  trashReason: r.trash_reason === "old_version" || r.trash_reason === "manual" ? r.trash_reason : null,
   ...(r.review_drafts === undefined ? {} : { reviewDrafts: r.review_drafts ?? 0, reviewOpen: r.review_open ?? 0 }),
 });
 export const MEDIA_COLS =
-  "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at, repostable, number, (SELECT v.size FROM media_variants v WHERE v.media_id = media.id AND v.kind = 'tg') AS tg_size";
+  "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at, repostable, number, trashed_at, trash_reason, (SELECT v.size FROM media_variants v WHERE v.media_id = media.id AND v.kind = 'tg') AS tg_size";
 
 /** Для библиотеки: ещё и счётчики «Работы с видео». */
 const LIB_COLS =
@@ -237,8 +243,9 @@ export const migrated: MiddlewareHandler<AppBindings> = async (c, next) => {
 export const media = new Hono<AppBindings>()
   .use("*", migrated)
   .get("/", async (c) => {
+    await autoTrash(c.env.DB);
     const rows = await c.env.DB.prepare(
-      `SELECT ${LIB_COLS} FROM media WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500`,
+      `SELECT ${LIB_COLS} FROM media WHERE deleted_at IS NULL AND trashed_at IS NULL ORDER BY created_at DESC LIMIT 500`,
     ).all<MediaRow>();
     const items = rows.results.map((r) => toItem(r));
     const body: MediaList = { items, totalBytes: items.reduce((s, i) => s + i.size, 0), limitBytes: FREE_R2_BYTES };
@@ -270,20 +277,34 @@ export const media = new Hono<AppBindings>()
     const row = await mediaById(c.env.DB, c.req.param("id"));
     return row ? c.json({ item: toItem(row) }) : c.json({ error: "Ролик не найден" }, 404);
   })
+  // Корзина: список, положить, вернуть. Удалить насовсем — DELETE (только из корзины или сразу, если владелец так решил)
+  .get("/trash", async (c) => {
+    const rows = await c.env.DB.prepare(`SELECT ${MEDIA_COLS} FROM media WHERE deleted_at IS NULL AND trashed_at IS NOT NULL ORDER BY trashed_at DESC`).all<MediaRow>();
+    const body: TrashList = { items: rows.results.map((r) => toItem(r)), days: TRASH_DAYS };
+    return c.json(body);
+  })
+  .post("/:id/trash", async (c) => {
+    const id = c.req.param("id");
+    if (await hasScheduled(c.env.DB, id)) return c.json({ error: "Ролик стоит в расписании — сначала снимите его посты в «Календаре»" }, 409);
+    const res = await c.env.DB.prepare("UPDATE media SET trashed_at = ?, trash_reason = 'manual' WHERE id = ? AND deleted_at IS NULL AND trashed_at IS NULL").bind(Date.now(), id).run();
+    if (!res.meta.changes) return c.json({ error: "Ролик не найден" }, 404);
+    await audit(c.env.DB, "media trash", id);
+    return c.json({ ok: true as const });
+  })
+  .post("/:id/restore", async (c) => {
+    const id = c.req.param("id");
+    // вернули вручную — «kept»: сама больше не уберётся (иначе следующая загрузка библиотеки снова унесёт её в корзину)
+    const res = await c.env.DB.prepare("UPDATE media SET trashed_at = NULL, trash_reason = 'kept' WHERE id = ? AND deleted_at IS NULL AND trashed_at IS NOT NULL").bind(id).run();
+    if (!res.meta.changes) return c.json({ error: "В корзине такого ролика нет" }, 404);
+    await audit(c.env.DB, "media restore", id);
+    return c.json({ ok: true as const });
+  })
   .delete("/:id", async (c) => {
     const id = c.req.param("id");
-    const row = await c.env.DB.prepare("SELECT r2_key, name FROM media WHERE id = ? AND deleted_at IS NULL")
-      .bind(id)
-      .first<{ r2_key: string; name: string }>();
-    if (!row) return c.json({ error: "Ролик не найден" }, 404);
-    await c.env.BUCKET.delete(row.r2_key);
-    const variants = await c.env.DB.prepare("SELECT r2_key FROM media_variants WHERE media_id = ?").bind(id).all<{ r2_key: string }>();
-    for (const v of variants.results) await c.env.BUCKET.delete(v.r2_key);
-    await c.env.DB.batch([
-      c.env.DB.prepare("UPDATE media SET deleted_at = ? WHERE id = ?").bind(Date.now(), id),
-      c.env.DB.prepare("DELETE FROM media_variants WHERE media_id = ?").bind(id),
-    ]);
-    await audit(c.env.DB, "media delete", row.name);
+    if (await hasScheduled(c.env.DB, id)) return c.json({ error: "Ролик стоит в расписании — сначала снимите его посты в «Календаре»" }, 409);
+    const d = await hardDelete(c.env.DB, c.env.BUCKET, id);
+    if (!d) return c.json({ error: "Ролик не найден" }, 404);
+    await audit(c.env.DB, "media delete", d.name);
     return c.json({ ok: true as const });
   });
 

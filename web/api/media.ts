@@ -7,11 +7,13 @@ import {
   UploadPartSchema,
   UploadResultSchema,
   UploadStartSchema,
+  TrashListSchema,
   type MediaList,
+  type TrashList,
   type UploadPart,
   type UploadResult,
 } from "../../shared/schemas";
-import { apiGet, apiPut, ApiRequestError } from "./client";
+import { apiGet, apiPost, apiPut, ApiRequestError } from "./client";
 
 export const mediaKey = ["media"] as const;
 
@@ -103,7 +105,7 @@ export function useDeleteMedia() {
       const err = ApiErrorSchema.safeParse(data);
       throw new ApiRequestError(err.success ? err.data.error : `Ошибка (${res.status})`, res.status);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: mediaKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: mediaKey }),
   });
 }
 
@@ -138,5 +140,18 @@ export function useSetRepost() {
       void qc.invalidateQueries({ queryKey: mediaKey });
       void qc.invalidateQueries({ queryKey: ["reposts"] });
     },
+  });
+}
+
+const trashKey = ["media", "trash"] as const;
+/** Корзина: ролики, которые удалятся насовсем через 14 дней. */
+export function useTrashList() {
+  return useQuery<TrashList>({ queryKey: trashKey, queryFn: () => apiGet("/media/trash", TrashListSchema), staleTime: 15_000 });
+}
+export function useTrashAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "trash" | "restore" }) => apiPost(`/media/${encodeURIComponent(id)}/${action}`, OkSchema, {}),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: mediaKey }),
   });
 }

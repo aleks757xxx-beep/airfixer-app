@@ -81,9 +81,14 @@ export const MediaItemSchema = z.object({
   /** «Работа с видео»: неотправленные заметки и раунды правок, ждущие Claude */
   reviewDrafts: z.number().int().optional(),
   reviewOpen: z.number().int().optional(),
+  /** Корзина: когда положили и почему (old_version — сама, когда новую версию поставили в публикацию; manual — вручную) */
+  trashedAt: z.number().int().nullable().optional(),
+  trashReason: z.enum(["old_version", "manual"]).nullable().optional(),
 });
 export type MediaItem = z.infer<typeof MediaItemSchema>;
 export const RepostInputSchema = z.object({ on: z.boolean() });
+export const TrashListSchema = z.object({ items: z.array(MediaItemSchema), days: z.number().int() });
+export type TrashList = z.infer<typeof TrashListSchema>;
 
 /** Имя папки/файла в «Исходниках»: без «/» и служебных символов. */
 const DiskNameSchema = z

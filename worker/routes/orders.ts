@@ -1,4 +1,5 @@
 import { exportBackup } from "../services/backup";
+import { hasScheduled } from "../services/trash";
 import { z } from "zod";
 import { connectAgent } from "./connect";
 import { Hono, type Context } from "hono";
@@ -237,6 +238,15 @@ export const ordersAgent = new Hono<AppBindings>()
     return c.json(await readSources(c.env.DB));
   })
   // Пометка использованных исходников (решение владельца 09.11.2026): после монтажа — список исходников ролика
+  // Для Claude: корзина (те же правила, что у владельца)
+  .post("/media/:id/trash", async (c) => {
+    const id = c.req.param("id");
+    if (await hasScheduled(c.env.DB, id)) return c.json({ error: "Ролик стоит в расписании — сначала снимите его посты" }, 409);
+    const res = await c.env.DB.prepare("UPDATE media SET trashed_at = ?, trash_reason = 'manual' WHERE id = ? AND deleted_at IS NULL AND trashed_at IS NULL").bind(Date.now(), id).run();
+    if (!res.meta.changes) return c.json({ error: "Ролик не найден" }, 404);
+    await audit(c.env.DB, "media trash (claude)", id);
+    return c.json({ ok: true as const });
+  })
   .put("/media/:id/sources", async (c) => {
     const p = MediaSourcesInputSchema.safeParse(await c.req.json().catch(() => null));
     if (!p.success) return c.json({ error: p.error.issues[0]?.message ?? "Неверный список исходников" }, 400);

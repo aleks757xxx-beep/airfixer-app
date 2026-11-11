@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MAX_UPLOAD_BYTES, NOTE_MAX, type MediaItem } from "../../../shared/schemas";
-import { mediaKey, uploadVideo, useDeleteMedia, useMediaList, useSaveNote, useSetRepost } from "../../api/media";
+import { mediaKey, uploadVideo, useDeleteMedia, useMediaList, useSaveNote, useSetRepost, useTrashAction, useTrashList } from "../../api/media";
 import { Card, Skeleton } from "../../components/ui/Card";
 import { formatBytes, formatDate, plural } from "../../lib/format";
 import { AskClaudeButton } from "../claude/askClaude";
@@ -149,16 +149,68 @@ function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: ()
           onClick={onDelete}
           className="mt-2 block text-xs font-semibold text-error disabled:opacity-50"
         >
-          Удалить
+          🗑 В корзину
         </button>
       </div>
     </div>
   );
 }
 
+/** Корзина (решение владельца 11.11.2026): старые версии и выброшенное вручную; через 14 дней — насовсем. */
+function Trash() {
+  const q = useTrashList();
+  const act = useTrashAction();
+  const del = useDeleteMedia();
+  const [open, setOpen] = useState(false);
+  const items = q.data?.items ?? [];
+  if (!items.length) return null;
+  const days = q.data?.days ?? 14;
+  return (
+    <Card>
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 text-left">
+        <span className="text-lg font-bold">🗑 Корзина · {items.length}</span>
+        <span className="flex-1 text-xs text-on-surface-variant">удаляется насовсем через {days} дней</span>
+        <span className="text-on-surface-variant">{open ? "▴" : "▾"}</span>
+      </button>
+      {open ? (
+        <ul className="mt-2 divide-y divide-outline-variant">
+          {items.map((it) => (
+            <li key={it.id} className="flex items-center gap-3 py-2">
+              <video src={`${it.url}#t=1`} preload="metadata" muted playsInline className="h-16 w-9 shrink-0 rounded bg-black object-cover" />
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm font-semibold">{it.name}</p>
+                <p className="text-xs text-on-surface-variant">
+                  {it.trashReason === "old_version" ? "старая версия — новую поставили в публикацию" : "в корзину вручную"}
+                  {it.trashedAt ? ` · удалится ${formatDate(it.trashedAt + days * 86_400_000)}` : ""}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <button type="button" disabled={act.isPending} onClick={() => act.mutate({ id: it.id, action: "restore" })} className="text-xs font-semibold text-primary">
+                  ↩ Вернуть
+                </button>
+                <button
+                  type="button"
+                  disabled={del.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Удалить «${it.name}» насовсем?\n\nИз приложения — сразу, из папки «Готовое» — Claude сотрёт при следующей работе. Вернуть будет нельзя.`)) del.mutate(it.id);
+                  }}
+                  className="text-xs font-semibold text-error"
+                >
+                  Удалить сейчас
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {act.error ?? del.error ? <p className="mt-2 text-sm text-error">{(act.error ?? del.error)?.message}</p> : null}
+    </Card>
+  );
+}
+
 export function LibraryPage() {
   const list = useMediaList();
-  const del = useDeleteMedia();
+  const trash = useTrashAction();
   const qc = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [jobs, setJobs] = useState<UploadJob[]>([]);
@@ -253,7 +305,7 @@ export function LibraryPage() {
 
       <Reposts />
 
-      {del.isError ? <p className="font-semibold text-error">{del.error.message}</p> : null}
+      {trash.isError ? <p className="font-semibold text-error">{trash.error.message}</p> : null}
 
       {list.isPending ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -281,21 +333,13 @@ export function LibraryPage() {
             <MediaCard
               key={it.id}
               item={it}
-              deleting={del.isPending && del.variables === it.id}
-              onDelete={() => {
-                if (
-                  window.confirm(
-                    it.source === "gotovoe"
-                      ? `Удалить «${it.name}» насовсем?\n\nИз библиотеки — сразу, из папки «Готовое» — Claude сотрёт при следующей работе.`
-                      : `Удалить «${it.name}» из библиотеки?`,
-                  )
-                )
-                  del.mutate(it.id);
-              }}
+              deleting={trash.isPending && trash.variables.id === it.id}
+              onDelete={() => trash.mutate({ id: it.id, action: "trash" })}
             />
           ))}
         </div>
       )}
+      <Trash />
     </div>
   );
 }

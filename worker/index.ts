@@ -6,6 +6,7 @@ import { auth } from "./routes/auth";
 import { passkeys } from "./routes/passkeys";
 import { requireAuth } from "./middleware/auth";
 import { ensureMigrated } from "./lib/migrate";
+import { autoTrash, purgeTrash } from "./services/trash";
 import { cleanupOrphans, serveMedia } from "./services/storage";
 import { cleanupStaleUploads, ingest, media } from "./routes/media";
 import { settings } from "./routes/settings";
@@ -103,6 +104,11 @@ export default {
     }
     const removed = await cleanupOrphans(env.BUCKET, env.DB);
     console.log("cleanup: removed orphan files", removed);
+    // корзина: старые версии — сами; лежащее дольше 14 дней — насовсем (файл в «Готовом» стирает Claude)
+    const trashed = await autoTrash(env.DB).catch((e: unknown) => (console.error("auto trash", e), []));
+    if (trashed.length) console.log("trash: old versions", trashed.length);
+    const purged = await purgeTrash(env.DB, env.BUCKET).catch((e: unknown) => (console.error("purge trash", e), []));
+    if (purged.length) console.log("trash: purged", purged.join("; "));
     const stale = await cleanupStaleUploads(env.DB, env.BUCKET);
     console.log("cleanup: aborted stale uploads", stale);
     // журнал — год, кэш Buffer — неделя

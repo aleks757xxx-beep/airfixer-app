@@ -394,7 +394,10 @@ describe("уведомления о сбоях и работе Claude", () => {
   test("пост не вышел — сообщение с причиной и кнопкой", async () => {
     const extra = await s.upload("Удалится.mp4", 12_000);
     const r = await s.api("/api/v2/ingest/agent/publish/posts", { method: "POST", agent: true, body: { mediaId: extra.id, mode: "now", targets: [{ channelId: "fb:p1", text: "Этот не выйдет" }] } });
-    assert.equal((await s.api(`/api/v2/media/${extra.id}`, { method: "DELETE", cookie })).status, 200);
+    // удалить ролик со стоящим в расписании постом владелец не может (сначала снять пост) — имитируем удаление мимо приложения
+    assert.equal((await s.api(`/api/v2/media/${extra.id}`, { method: "DELETE", cookie })).status, 409);
+    assert.equal((await s.api(`/api/v2/media/${extra.id}/trash`, { method: "POST", cookie })).status, 409);
+    s.sql(`UPDATE media SET deleted_at = ${Date.now()} WHERE id = '${extra.id}'`);
     const p = await runUntilSent(r.data.results[0].postId, 2);
     assert.equal(p.status, "error");
     await s.tick();
@@ -548,6 +551,44 @@ describe("работа с видео", () => {
     const item = (await s.api("/api/v2/ingest/agent/reviews", { agent: true })).data.items.find((x) => x.media.id === m.id);
     assert.equal(item.voice.noise, 2, "звук по умолчанию уходит вместе с раундом");
     await s.api("/api/v2/review/voice-default", { method: "PUT", cookie, body: { voice: { volume: 0, bass: -1, nasal: 1, noise: 0, pauses: 0, music: 0 } } });
+  });
+});
+
+describe("корзина", () => {
+  test("старая версия уходит сама, когда новую ставят в публикацию; вернуть, удалить, через 14 дней — насовсем", async () => {
+    const v1 = await s.upload("Корзина проба.mp4", 21_000);
+    const v2 = await s.upload("Корзина проба v2.mp4", 22_000);
+    const other = await s.upload("Другой ролик.mp4", 23_000);
+    let lib = await s.api("/api/v2/media", { cookie });
+    assert.ok(lib.data.items.some((x) => x.id === v1.id), "пока ничего не запланировано — обе версии на месте");
+    const due = Date.now() + 3 * 86_400_000;
+    const p = await s.api("/api/v2/ingest/agent/publish/posts", { method: "POST", agent: true, body: { mediaId: v2.id, mode: "schedule", dueAt: due, targets: [{ channelId: "fb:p1", text: "Корзина v2" }] } });
+    assert.equal(p.data.results[0].ok, true);
+    lib = await s.api("/api/v2/media", { cookie });
+    assert.ok(!lib.data.items.some((x) => x.id === v1.id), "старая версия ушла из библиотеки");
+    assert.ok(lib.data.items.some((x) => x.id === v2.id) && lib.data.items.some((x) => x.id === other.id));
+    let t = await s.api("/api/v2/media/trash", { cookie });
+    assert.equal(t.data.days, 14);
+    assert.equal(t.data.items.find((x) => x.id === v1.id)?.trashReason, "old_version");
+    // запланированный ролик — ни в корзину, ни удалить
+    assert.equal((await s.api(`/api/v2/media/${v2.id}/trash`, { method: "POST", cookie })).status, 409);
+    // вернуть — и больше сама не уходит
+    assert.equal((await s.api(`/api/v2/media/${v1.id}/restore`, { method: "POST", cookie })).status, 200);
+    lib = await s.api("/api/v2/media", { cookie });
+    assert.ok(lib.data.items.some((x) => x.id === v1.id), "вернули — осталась");
+    // вручную в корзину, «Удалить сейчас»
+    assert.equal((await s.api(`/api/v2/media/${other.id}/trash`, { method: "POST", cookie })).status, 200);
+    assert.equal((await s.api(`/api/v2/media/${other.id}`, { method: "DELETE", cookie })).status, 200);
+    const gone = await s.api("/api/v2/ingest/deleted", { agent: true });
+    assert.ok(gone.data.items.some((x) => x.id === other.id), "Claude сотрёт файл в «Готовом»");
+    // через 14 дней — насовсем
+    assert.equal((await s.api(`/api/v2/ingest/agent/media/${v1.id}/trash`, { method: "POST", agent: true })).status, 200);
+    s.sql(`UPDATE media SET trashed_at = ${Date.now() - 15 * 86_400_000} WHERE id = '${v1.id}'`);
+    await s.tick("0 3 * * *");
+    t = await s.api("/api/v2/media/trash", { cookie });
+    assert.ok(!t.data.items.some((x) => x.id === v1.id), "из корзины ушла");
+    assert.ok((await s.api("/api/v2/ingest/deleted", { agent: true })).data.items.some((x) => x.id === v1.id));
+    await s.api(`/api/v2/ingest/agent/publish/posts/${p.data.results[0].postId}`, { method: "DELETE", agent: true });
   });
 });
 

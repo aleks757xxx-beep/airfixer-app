@@ -19,6 +19,7 @@ import repost0018 from "../../migrations/0018_repost.sql";
 import sourcesUsed0019 from "../../migrations/0019_sources_used.sql";
 import publishedOutside0020 from "../../migrations/0020_published_outside.sql";
 import review0021 from "../../migrations/0021_review.sql";
+import trash0022 from "../../migrations/0022_trash.sql";
 
 /** Миграции по порядку. Новую — добавлять в конец, старые не менять. */
 const MIGRATIONS: ReadonlyArray<{ id: number; name: string; sql: string }> = [
@@ -43,6 +44,7 @@ const MIGRATIONS: ReadonlyArray<{ id: number; name: string; sql: string }> = [
   { id: 19, name: "0019_sources_used", sql: sourcesUsed0019 },
   { id: 20, name: "0020_published_outside", sql: publishedOutside0020 },
   { id: 21, name: "0021_review", sql: review0021 },
+  { id: 22, name: "0022_trash", sql: trash0022 },
 ];
 
 let applied: Promise<number> | null = null;
