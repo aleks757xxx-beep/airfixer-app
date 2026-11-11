@@ -475,6 +475,82 @@ describe("правки по секундам", () => {
   });
 });
 
+describe("работа с видео", () => {
+  test("заметки (точка, отрезок, без времени), звук, отправка, ответ Claude", async () => {
+    const m = await s.upload("Работа с видео.mp4", 17_000);
+    const base = `/api/v2/review/${m.id}`;
+    const st0 = await s.api(base, { cookie });
+    assert.equal(st0.status, 200);
+    assert.equal(st0.data.canSend, false, "пусто — отправлять нечего");
+    assert.deepEqual(st0.data.voiceDefault, { volume: 0, bass: -1, nasal: 1, noise: 0, pauses: 0, music: 0 });
+    // отрезок с концом раньше начала — нельзя
+    assert.equal((await s.api(`${base}/notes`, { method: "POST", cookie, body: { kind: "cut", tFrom: 9, tTo: 6, text: "x" } })).status, 400);
+    const long = "Очень длинная заметка. ".repeat(150).trim(); // > 2000 знаков — теперь можно
+    const a = await s.api(`${base}/notes`, { method: "POST", cookie, body: { kind: "cut", tFrom: 6, tTo: 9.5, text: "убрать кусок" } });
+    const b = await s.api(`${base}/notes`, { method: "POST", cookie, body: { kind: "sound", tFrom: 2, tTo: null, text: long } });
+    const c = await s.api(`${base}/notes`, { method: "POST", cookie, body: { kind: "other", tFrom: null, tTo: null, text: "в целом ок" } });
+    assert.ok(a.status === 200 && b.status === 200 && c.status === 200);
+    assert.equal((await s.api(`${base}/notes/${c.data.note.id}`, { method: "PUT", cookie, body: { kind: "frame", tFrom: 1, tTo: null, text: "кадр темноват" } })).status, 200);
+    assert.equal((await s.api(`${base}/notes/${b.data.note.id}`, { method: "DELETE", cookie })).status, 200);
+    const lib = await s.api("/api/v2/media", { cookie });
+    assert.equal(lib.data.items.find((x) => x.id === m.id).reviewDrafts, 2, "в библиотеке видно черновики");
+    // звук ролика
+    const v = await s.api(`${base}/voice`, { method: "PUT", cookie, body: { voice: { volume: 1, bass: -2, nasal: 2, noise: 1, pauses: 1, music: -3, comment: "музыку не надо" } } });
+    assert.equal(v.status, 200);
+    assert.equal(v.data.voice.music, -3);
+    assert.equal(v.data.canSend, true);
+    const sent = await s.api(`${base}/send`, { method: "POST", cookie, body: {} });
+    assert.equal(sent.status, 200);
+    assert.equal(sent.data.drafts.length, 0);
+    assert.equal(sent.data.rounds[0].notes.length, 2);
+    assert.deepEqual(sent.data.rounds[0].notes.map((n) => n.tFrom), [1, 6], "по времени");
+    assert.equal(sent.data.canSend, false, "звук уже отправлен");
+    assert.equal((await s.api(`${base}/send`, { method: "POST", cookie, body: {} })).status, 400);
+    // отправленную заметку менять нельзя
+    assert.equal((await s.api(`${base}/notes/${a.data.note.id}`, { method: "DELETE", cookie })).status, 409);
+    // Claude: открытые раунды, звук готовым фильтром ffmpeg
+    const q = await s.api("/api/v2/ingest/agent/reviews", { agent: true });
+    const item = q.data.items.find((x) => x.media.id === m.id);
+    assert.ok(item, "раунд виден Claude");
+    assert.match(item.voiceFfmpeg, /highpass=f=120,lowshelf=f=220:g=-7,equalizer=f=950/);
+    assert.match(item.voiceText, /Музыка: Без музыки/);
+    assert.equal((await s.api("/api/v2/ingest/agent/reviews", {})).status, 401, "без ключа — нельзя");
+    const ans = await s.api(`/api/v2/ingest/agent/reviews/${item.round.id}`, {
+      method: "POST",
+      agent: true,
+      body: { reply: "Сделал v2", notes: [{ id: a.data.note.id, status: "done", reply: "Убрал 6–9 с" }, { id: c.data.note.id, status: "wontdo", reply: "Светлее кадра нет" }] },
+    });
+    assert.equal(ans.status, 200);
+    const st = await s.api(base, { cookie });
+    const r = st.data.rounds[0];
+    assert.equal(r.reply, "Сделал v2");
+    assert.ok(r.repliedAt);
+    assert.deepEqual(r.notes.map((n) => n.status).sort(), ["done", "wontdo"]);
+    assert.equal((await s.api("/api/v2/ingest/agent/reviews", { agent: true })).data.items.filter((x) => x.media.id === m.id).length, 0, "отвеченный раунд ушёл из очереди");
+    await s.tick();
+    assert.ok(messages().some((x) => /Claude ответил на правки<\/b> — ролик «Работа с видео\.mp4»/.test(x.text)), "уведомление в Telegram");
+  });
+  test("мои настройки звука по умолчанию; черновик заказа → «Правки»", async () => {
+    const d = await s.api("/api/v2/review/voice-default", { method: "PUT", cookie, body: { voice: { volume: 0, bass: 0, nasal: 0, noise: 2, pauses: 0, music: 1 } } });
+    assert.equal(d.status, 200);
+    const o = await s.api("/api/v2/orders", { method: "POST", cookie, body: { shootDate: null, folder: null, brief: "Проба работы с видео", durationSec: null, style: null } });
+    const id = o.data.order.id;
+    const m = await s.upload("Монтаж #10 v1 Проба.mp4", 18_000);
+    await s.api(`/api/v2/ingest/agent/orders/${id}`, { method: "POST", agent: true, body: { kind: "draft", mediaId: m.id, text: "v1" } });
+    const st = await s.api(`/api/v2/review/${m.id}`, { cookie });
+    assert.equal(st.data.voiceDefault.noise, 2);
+    assert.equal(st.data.voice, null);
+    await s.api(`/api/v2/review/${m.id}/notes`, { method: "POST", cookie, body: { kind: "subtitle", tFrom: 3, tTo: null, text: "опечатка" } });
+    assert.equal((await s.api(`/api/v2/review/${m.id}/send`, { method: "POST", cookie, body: { orderId: id } })).status, 200);
+    const ord = (await s.api("/api/v2/ingest/agent/orders", { agent: true })).data.items.find((x) => x.id === id);
+    assert.equal(ord.status, "revise");
+    assert.match(ord.events.at(-1).text, /Работе с видео/);
+    const item = (await s.api("/api/v2/ingest/agent/reviews", { agent: true })).data.items.find((x) => x.media.id === m.id);
+    assert.equal(item.voice.noise, 2, "звук по умолчанию уходит вместе с раундом");
+    await s.api("/api/v2/review/voice-default", { method: "PUT", cookie, body: { voice: { volume: 0, bass: -1, nasal: 1, noise: 0, pauses: 0, music: 0 } } });
+  });
+});
+
 describe("резервная копия", () => {
   test("все данные одним файлом, без сессий, кодов входа и токенов соцсетей", async () => {
     const r = await s.api("/api/v2/ingest/agent/backup", { agent: true });

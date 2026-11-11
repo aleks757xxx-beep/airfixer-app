@@ -3,7 +3,7 @@ import { NOTE_MAX, type Order, type OrderEvent, type OrderStatus } from "../../.
 import { useOrderAction, useOrders } from "../../api/orders";
 import { formatDateTime, formatShootDate } from "../../lib/format";
 import { AskClaudeButton } from "../claude/askClaude";
-import { TimeNotes } from "../review/TimeNotes";
+import { VideoWorkspace } from "../review/VideoWorkspace";
 
 const STATUS: Record<OrderStatus, { label: string; cls: string }> = {
   new: { label: "Новый — ждёт Claude", cls: "bg-warning-container text-warning" },
@@ -97,26 +97,8 @@ function OrderCard({ o }: { o: Order }) {
 
       {act.isError ? <p className="text-sm text-error">{act.error.message}</p> : null}
 
-      {mode === "timed" && lastDraft?.media ? (
-        <TimeNotes
-          url={lastDraft.media.url}
-          storageKey={`order-${o.id}-${lastDraft.id}`}
-          sending={act.isPending}
-          error={act.isError ? act.error.message : null}
-          onDone={() => setMode(null)}
-          onSend={(t, clear) =>
-            act.mutate(
-              { id: o.id, action: "revise", text: t },
-              {
-                onSuccess: () => {
-                  clear();
-                  setMode(null);
-                },
-              },
-            )
-          }
-        />
-      ) : mode && mode !== "timed" ? (
+      {mode === "timed" && lastDraft?.media ? <VideoWorkspace media={lastDraft.media} orderId={o.id} onClose={() => setMode(null)} /> : null}
+      {mode && mode !== "timed" ? (
         <form
           className="space-y-2"
           onSubmit={(ev) => {
@@ -165,7 +147,7 @@ function OrderCard({ o }: { o: Order }) {
               </button>
               {lastDraft?.media ? (
                 <button type="button" onClick={() => setMode("timed")} className="rounded-full bg-primary px-4 py-1.5 text-sm font-bold text-on-primary">
-                  🎬 Правки по секундам
+                  🎬 Работа с видео
                 </button>
               ) : null}
               <button type="button" onClick={() => setMode("revise")} className="rounded-full bg-surface-container-highest px-4 py-1.5 text-sm font-bold">

@@ -10,6 +10,7 @@ import { cleanupOrphans, serveMedia } from "./services/storage";
 import { cleanupStaleUploads, ingest, media } from "./routes/media";
 import { settings } from "./routes/settings";
 import { orders, ordersAgent } from "./routes/orders";
+import { review, reviewAgent } from "./routes/review";
 import { publish, publishAgent } from "./routes/publish";
 import { setBufferApiUrl } from "./services/buffer";
 import { setGraphUrl } from "./services/meta";
@@ -44,6 +45,7 @@ api.use("*", async (c, next) => {
 api.route("/connect", connectCallback);
 // Автозагрузка с Mac — по токену, не из браузера (поэтому до проверки Origin)
 api.route("/ingest/agent/publish", publishAgent);
+api.route("/ingest/agent/reviews", reviewAgent);
 api.route("/ingest/agent", ordersAgent);
 api.route("/ingest", ingest);
 api.use("*", sameOrigin);
@@ -55,6 +57,7 @@ api.route("/health", health);
 api.route("/media", media);
 api.route("/settings", settings);
 api.route("/orders", orders);
+api.route("/review", review);
 api.route("/publish", publish);
 api.route("/connect", connect);
 api.all("*", (c) => c.json({ error: "Не найдено" }, 404));

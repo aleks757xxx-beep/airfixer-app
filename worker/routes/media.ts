@@ -39,6 +39,8 @@ export interface MediaRow {
   tg_size?: number | null;
   repostable?: number | null;
   number?: number | null;
+  review_drafts?: number | null;
+  review_open?: number | null;
 }
 interface UploadRow {
   id: string;
@@ -67,9 +69,15 @@ export const toItem = (r: MediaRow): MediaItem => ({
   tgSize: r.tg_size ?? null,
   repostable: r.repostable === 1,
   number: r.number ?? null,
+  ...(r.review_drafts === undefined ? {} : { reviewDrafts: r.review_drafts ?? 0, reviewOpen: r.review_open ?? 0 }),
 });
 export const MEDIA_COLS =
   "id, r2_key, name, size, mime, source, created_at, note, note_status, note_reply, note_at, repostable, number, (SELECT v.size FROM media_variants v WHERE v.media_id = media.id AND v.kind = 'tg') AS tg_size";
+
+/** Для библиотеки: ещё и счётчики «Работы с видео». */
+const LIB_COLS =
+  MEDIA_COLS +
+  ", (SELECT COUNT(*) FROM review_notes n WHERE n.media_id = media.id AND n.status = 'draft') AS review_drafts, (SELECT COUNT(*) FROM review_rounds r WHERE r.media_id = media.id AND r.replied_at IS NULL) AS review_open";
 
 /** «имя.tg.mp4» — лёгкая копия ролика «имя.mp4» для Telegram (до 50 МБ). */
 const TG_VARIANT = /\.tg\.(mp4|mov|m4v)$/i;
@@ -230,7 +238,7 @@ export const media = new Hono<AppBindings>()
   .use("*", migrated)
   .get("/", async (c) => {
     const rows = await c.env.DB.prepare(
-      `SELECT ${MEDIA_COLS} FROM media WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500`,
+      `SELECT ${LIB_COLS} FROM media WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500`,
     ).all<MediaRow>();
     const items = rows.results.map((r) => toItem(r));
     const body: MediaList = { items, totalBytes: items.reduce((s, i) => s + i.size, 0), limitBytes: FREE_R2_BYTES };

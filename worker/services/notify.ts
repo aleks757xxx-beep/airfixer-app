@@ -139,6 +139,15 @@ export async function notifyClaudeWork(env: Env): Promise<number> {
     if (!(await once(env.DB, `task:${t.id}:${t.note_at}`))) continue;
     if (await notify(env, "claude", `🤖 <b>Claude выполнил задание</b> — ролик «${esc(t.name)}»\n${esc(short(t.note_reply ?? "", 300))}`, { text: "Открыть библиотеку", url: `${APP}/#/library` })) n++;
   }
+  const answered = await env.DB.prepare(
+    "SELECT r.id, r.reply, m.name FROM review_rounds r JOIN media m ON m.id = r.media_id WHERE r.replied_at > ? ORDER BY r.id LIMIT 10",
+  )
+    .bind(Date.now() - 6 * 3_600_000)
+    .all<{ id: number; reply: string | null; name: string }>();
+  for (const r of answered.results) {
+    if (!(await once(env.DB, `review:${r.id}`))) continue;
+    if (await notify(env, "claude", `🎬 <b>Claude ответил на правки</b> — ролик «${esc(r.name)}»\n${esc(short(r.reply ?? "Ответы — в «Работе с видео» → «Переписка»", 300))}`, { text: "Открыть библиотеку", url: `${APP}/#/library` })) n++;
+  }
   const drafts = await env.DB.prepare(
     "SELECT e.id, e.order_id, e.text FROM edit_events e WHERE e.author = 'claude' AND e.kind = 'draft' AND e.created_at > ? ORDER BY e.id LIMIT 10",
   )

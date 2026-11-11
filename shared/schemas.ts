@@ -78,6 +78,9 @@ export const MediaItemSchema = z.object({
   repostable: z.boolean().optional(),
   /** Номер ролика в «Готовом» (даётся, когда ролик впервые запланирован) */
   number: z.number().int().nullable().optional(),
+  /** «Работа с видео»: неотправленные заметки и раунды правок, ждущие Claude */
+  reviewDrafts: z.number().int().optional(),
+  reviewOpen: z.number().int().optional(),
 });
 export type MediaItem = z.infer<typeof MediaItemSchema>;
 export const RepostInputSchema = z.object({ on: z.boolean() });
