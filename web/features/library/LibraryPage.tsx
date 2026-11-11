@@ -8,6 +8,7 @@ import { AskClaudeButton } from "../claude/askClaude";
 import { OrderForm } from "../orders/OrderForm";
 import { OrdersList } from "../orders/OrdersList";
 import { ComposeDialog } from "../publish/ComposeDialog";
+import { TimeNotes } from "../review/TimeNotes";
 import { Reposts } from "./Reposts";
 
 interface UploadJob {
@@ -93,6 +94,43 @@ function NoteBlock({ item }: { item: MediaItem }) {
   );
 }
 
+/** Правки по секундам к ролику в библиотеке: уходят Claude как задание у ролика. */
+function TimedReview({ item, onClose }: { item: MediaItem; onClose: () => void }) {
+  const save = useSaveNote();
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Правки по секундам" className="fixed inset-0 z-50 overflow-y-auto bg-surface p-4">
+      <div className="mx-auto max-w-md space-y-3">
+        <div className="flex items-start gap-2">
+          <h2 className="type-title-m min-w-0 flex-1">🎬 Правки по секундам · {item.name}</h2>
+          <button type="button" onClick={onClose} aria-label="Закрыть" className="shrink-0 px-2 text-xl text-on-surface-variant">
+            ✕
+          </button>
+        </div>
+        <TimeNotes
+          url={item.url}
+          storageKey={`media-${item.id}`}
+          sending={save.isPending}
+          error={save.isError ? save.error.message : null}
+          onDone={onClose}
+          onSend={(t, clear) => {
+            // если задание уже ждёт Claude — дописываем к нему, а не затираем
+            const note = item.noteStatus === "new" && item.note ? `${item.note}\n\n${t}` : t;
+            save.mutate(
+              { id: item.id, note },
+              {
+                onSuccess: () => {
+                  clear();
+                  onClose();
+                },
+              },
+            );
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /** Галочка «можно повторять» (не все ролики можно выкладывать повторно — решает владелец). */
 function RepostToggle({ item }: { item: MediaItem }) {
   const set = useSetRepost();
@@ -114,6 +152,7 @@ function RepostToggle({ item }: { item: MediaItem }) {
 
 function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: () => void; deleting: boolean }) {
   const [composing, setComposing] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   return (
     <div className="overflow-hidden rounded-m3m border border-outline-variant bg-surface-container">
       <a href={item.url} target="_blank" rel="noreferrer" className="block bg-black">
@@ -133,6 +172,10 @@ function MediaCard({ item, onDelete, deleting }: { item: MediaItem; onDelete: ()
         </button>
         {composing ? <ComposeDialog media={item} onClose={() => setComposing(false)} /> : null}
         <RepostToggle item={item} />
+        <button type="button" onClick={() => setReviewing(true)} className="mt-2 block text-xs font-semibold text-primary">
+          🎬 Правки по секундам
+        </button>
+        {reviewing ? <TimedReview item={item} onClose={() => setReviewing(false)} /> : null}
         <NoteBlock item={item} />
         <AskClaudeButton item={item} className="mt-2 block text-xs font-semibold text-primary" />
         <button

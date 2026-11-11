@@ -451,6 +451,30 @@ describe("правила публикации", () => {
   });
 });
 
+describe("правки по секундам", () => {
+  const timed = "Правки по секундам:\n0:06 — кусок с потолком короче на 2 сек\n0:41 — кружочек закрывает лицо\n\nОбщее: музыка громковата";
+  test("к ролику в библиотеке — задание для Claude с секундами", async () => {
+    const m = await s.upload("Правки ролик.mp4", 15_000);
+    assert.equal((await s.api(`/api/v2/media/${m.id}/note`, { method: "PUT", cookie, body: { note: timed } })).status, 200);
+    const t = await s.api("/api/v2/ingest/tasks", { agent: true });
+    const task = t.data.items.find((x) => x.id === m.id);
+    assert.equal(task?.note, timed, "текст с секундами и переносами строк доходит до Claude как есть");
+  });
+  test("к черновику заказа — правки, заказ ждёт Claude", async () => {
+    const o = await s.api("/api/v2/orders", { method: "POST", cookie, body: { shootDate: null, folder: null, brief: "Мойка в клубе", durationSec: null, style: null } });
+    assert.equal(o.status, 200);
+    const id = o.data.order.id;
+    const m = await s.upload("Монтаж #9 v1 Проба.mp4", 16_000);
+    assert.equal((await s.api(`/api/v2/ingest/agent/orders/${id}`, { method: "POST", agent: true, body: { kind: "draft", mediaId: m.id, text: "v1" } })).status, 200);
+    const r = await s.api(`/api/v2/orders/${id}/revise`, { method: "POST", cookie, body: { text: timed } });
+    assert.equal(r.status, 200);
+    const list = await s.api("/api/v2/ingest/agent/orders", { agent: true });
+    const ord = list.data.items.find((x) => x.id === id);
+    assert.equal(ord?.status, "revise");
+    assert.equal(ord.events.at(-1).text, timed);
+  });
+});
+
 describe("резервная копия", () => {
   test("все данные одним файлом, без сессий, кодов входа и токенов соцсетей", async () => {
     const r = await s.api("/api/v2/ingest/agent/backup", { agent: true });
